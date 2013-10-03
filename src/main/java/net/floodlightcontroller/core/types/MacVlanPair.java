@@ -17,8 +17,27 @@
 
 package net.floodlightcontroller.core.types;
 
+import smartkv.client.util.Serializer;
+
+import com.google.common.primitives.Bytes;
+import com.google.common.primitives.Longs;
+import com.google.common.primitives.Shorts;
+
 public class MacVlanPair {
-    public Long mac;
+	
+    public static final Serializer<MacVlanPair> SERIALIZER = new Serializer<MacVlanPair>(){
+		@Override
+		public byte[] serialize(MacVlanPair obj) {
+			return Bytes.concat(Longs.toByteArray(obj.getMac()), Shorts.toByteArray(obj.getVlan())); 
+		}
+		
+		@Override
+		public MacVlanPair deserialize(byte[] bytes) {
+			return new MacVlanPair(Longs.fromByteArray(bytes), Shorts.fromBytes(bytes[8], bytes[9]));
+		}
+    };
+    
+	public Long mac;
     public Short vlan;
     public MacVlanPair(Long mac, Short vlan) {
         this.mac = mac;
@@ -41,4 +60,10 @@ public class MacVlanPair {
     public int hashCode() {
         return mac.hashCode() ^ vlan.hashCode();
     }
+
+	@Override
+	public String toString() {
+		return "MacVlanPair [mac=" + mac + ", vlan=" + vlan + "]";
+	}
+	
 }

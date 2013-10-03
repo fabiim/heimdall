@@ -33,7 +33,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +50,7 @@ import net.floodlightcontroller.core.types.MacVlanPair;
 import net.floodlightcontroller.counter.ICounterStoreService;
 import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.restserver.IRestApiService;
+import net.floodlightcontroller.util.MACAddress;
 
 import org.openflow.protocol.OFFlowMod;
 import org.openflow.protocol.OFFlowRemoved;
@@ -63,21 +63,28 @@ import org.openflow.protocol.OFType;
 import org.openflow.protocol.action.OFAction;
 import org.openflow.protocol.action.OFActionOutput;
 import org.openflow.util.HexString;
-import org.openflow.util.LRULinkedHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import smartkv.client.tables.KeyValueTable;
+import smartkv.client.tables.KeyValueTable_;
+import smartkv.client.tables.Table;
+import smartkv.client.util.Serializer;
+import smartkv.client.workloads.ActivityEvent;
+import smartkv.client.workloads.RequestLogger;
+import smartkv.client.workloads.WorkloadLoggerTable;
 
 public class LearningSwitch
     implements IFloodlightModule, ILearningSwitchService, IOFMessageListener {
     protected static Logger log = LoggerFactory.getLogger(LearningSwitch.class);
-
+    
     // Module dependencies
     protected IFloodlightProviderService floodlightProvider;
     protected ICounterStoreService counterStore;
     protected IRestApiService restApi;
-
+    
     // Stores the learned state for each switch
-    protected Map<IOFSwitch, Map<MacVlanPair,Short>> macVlanToSwitchPortMap;
+    protected Map<IOFSwitch, KeyValueTable<MacVlanPair,Short>> macVlanToSwitchPortMap;
 
     // flow-mod - for use in the cookie
     public static final int LEARNING_SWITCH_APP_ID = 1;
@@ -91,7 +98,7 @@ public class LearningSwitch
     protected static short FLOWMOD_DEFAULT_IDLE_TIMEOUT = 5; // in seconds
     protected static short FLOWMOD_DEFAULT_HARD_TIMEOUT = 0; // infinite
     protected static short FLOWMOD_PRIORITY = 100;
-
+    
     // for managing our map sizes
     protected static final int MAX_MACS_PER_SWITCH  = 1000;
 
@@ -106,10 +113,10 @@ public class LearningSwitch
     }
 
     @Override
-    public String getName() {
+    public String getName() { 
         return "learningswitch";
     }
-
+	
     /**
      * Adds a host to the MAC/VLAN->SwitchPort mapping
      * @param sw The switch to add the mapping to
@@ -118,22 +125,18 @@ public class LearningSwitch
      * @param portVal The switchport that the host is on
      */
     protected void addToPortMap(IOFSwitch sw, long mac, short vlan, short portVal) {
-        Map<MacVlanPair,Short> swMap = macVlanToSwitchPortMap.get(sw);
-
+        KeyValueTable<MacVlanPair,Short> swMap = getTable(sw);
+        
         if (vlan == (short) 0xffff) {
             // OFMatch.loadFromPacket sets VLAN ID to 0xffff if the packet contains no VLAN tag;
             // for our purposes that is equivalent to the default VLAN ID 0
             vlan = 0;
         }
 
-        if (swMap == null) {
-            // May be accessed by REST API so we need to make it thread safe
-            swMap = Collections.synchronizedMap(new LRULinkedHashMap<MacVlanPair,Short>(MAX_MACS_PER_SWITCH));
-            macVlanToSwitchPortMap.put(sw, swMap);
-        }
+        
         swMap.put(new MacVlanPair(mac, vlan), portVal);
     }
-
+    
     /**
      * Removes a host from the MAC/VLAN->SwitchPort mapping
      * @param sw The switch to remove the mapping from
@@ -144,11 +147,11 @@ public class LearningSwitch
         if (vlan == (short) 0xffff) {
             vlan = 0;
         }
-        Map<MacVlanPair,Short> swMap = macVlanToSwitchPortMap.get(sw);
+        KeyValueTable<MacVlanPair,Short> swMap = macVlanToSwitchPortMap.get(sw);
         if (swMap != null)
             swMap.remove(new MacVlanPair(mac, vlan));
     }
-
+    
     /**
      * Get the port that a MAC/VLAN pair is associated with
      * @param sw The switch to get the mapping from
@@ -160,9 +163,10 @@ public class LearningSwitch
         if (vlan == (short) 0xffff) {
             vlan = 0;
         }
-        Map<MacVlanPair,Short> swMap = macVlanToSwitchPortMap.get(sw);
+        
+        KeyValueTable<MacVlanPair,Short> swMap = macVlanToSwitchPortMap.get(sw);
         if (swMap != null)
-            return swMap.get(new MacVlanPair(mac, vlan));
+            return swMap.get(new MacVlanPair(mac,vlan)); 
 
         // if none found
         return null;
@@ -172,7 +176,9 @@ public class LearningSwitch
      * Clears the MAC/VLAN -> SwitchPort map for all switches
      */
     public void clearLearnedTable() {
-        macVlanToSwitchPortMap.clear();
+    	for (Table<?,?> table : macVlanToSwitchPortMap.values()){
+    		table.clear();
+    	}
     }
 
     /**
@@ -180,13 +186,13 @@ public class LearningSwitch
      * @param sw The switch to clear the mapping for
      */
     public void clearLearnedTable(IOFSwitch sw) {
-        Map<MacVlanPair, Short> swMap = macVlanToSwitchPortMap.get(sw);
+        KeyValueTable<MacVlanPair, Short> swMap = macVlanToSwitchPortMap.get(sw);
         if (swMap != null)
             swMap.clear();
     }
 
     @Override
-    public synchronized Map<IOFSwitch, Map<MacVlanPair,Short>> getTable() {
+    public synchronized Map<IOFSwitch, KeyValueTable<MacVlanPair,Short>> getTable() {
         return macVlanToSwitchPortMap;
     }
 
@@ -249,9 +255,9 @@ public class LearningSwitch
             log.trace("{} {} flow mod {}",
                       new Object[]{ sw, (command == OFFlowMod.OFPFC_DELETE) ? "deleting" : "adding", flowMod });
         }
-
+        
         counterStore.updatePktOutFMCounterStoreLocal(sw, flowMod);
-
+        
         // and write it out
         try {
             sw.write(flowMod, null);
@@ -399,24 +405,27 @@ public class LearningSwitch
     private Command processPacketInMessage(IOFSwitch sw, OFPacketIn pi, FloodlightContext cntx) {
         // Read in packet data headers by using OFMatch
         OFMatch match = new OFMatch();
+        
         match.loadFromPacket(pi.getPacketData(), pi.getInPort());
         Long sourceMac = Ethernet.toLong(match.getDataLayerSource());
         Long destMac = Ethernet.toLong(match.getDataLayerDestination());
         Short vlan = match.getDataLayerVirtualLan();
+        ActivityEvent e = RequestLogger.getRequestLogger().addActivity(ActivityEvent.packetIn( pi.getReason().toString()  + " Source: " + HexString.toHexString(sourceMac) +" Destination: " + HexString.toHexString(destMac) + ":" + vlan));
         if ((destMac & 0xfffffffffff0L) == 0x0180c2000000L) {
             if (log.isTraceEnabled()) {
                 log.trace("ignoring packet addressed to 802.1D/Q reserved addr: switch {} vlan {} dest MAC {}",
                           new Object[]{ sw, vlan, HexString.toHexString(destMac) });
             }
+            RequestLogger.getRequestLogger().endActivity(e);
             return Command.STOP;
         }
         if ((sourceMac & 0x010000000000L) == 0) {
             // If source MAC is a unicast address, learn the port for this MAC/VLAN
             this.addToPortMap(sw, sourceMac, vlan, pi.getInPort());
         }
-
+        
         // Now output flow-mod and/or packet
-        Short outPort = getFromPortMap(sw, destMac, vlan);
+        Short outPort =  !MACAddress.isMulticast(match.getDataLayerDestination()) ? getFromPortMap(sw, destMac, vlan) : null ;
         if (outPort == null) {
             // If we haven't learned the port for the dest MAC/VLAN, flood it
             // Don't flood broadcast packets if the broadcast is disabled.
@@ -457,6 +466,7 @@ public class LearningSwitch
                     match.getInputPort());
             }
         }
+        RequestLogger.getRequestLogger().endActivity(e);
         return Command.CONTINUE;
     }
 
@@ -566,7 +576,7 @@ public class LearningSwitch
     public void init(FloodlightModuleContext context)
             throws FloodlightModuleException {
         macVlanToSwitchPortMap =
-                new ConcurrentHashMap<IOFSwitch, Map<MacVlanPair,Short>>();
+                new ConcurrentHashMap<IOFSwitch, KeyValueTable<MacVlanPair,Short>>();
         floodlightProvider =
                 context.getServiceImpl(IFloodlightProviderService.class);
         counterStore =
@@ -621,4 +631,17 @@ public class LearningSwitch
         log.debug("FlowMod priority set to {}",
                 FLOWMOD_PRIORITY);
     }
+    
+    private final KeyValueTable<MacVlanPair, Short> getTable(IOFSwitch sw) {
+		KeyValueTable<MacVlanPair, Short> stable;
+		if (macVlanToSwitchPortMap.containsKey(sw)){
+    		stable = macVlanToSwitchPortMap.get(sw); 
+    	}
+    	else{
+    		//stable =  KeyValueTable_.<MacVlanPair, Short>getTableAndCreateProxy((int) sw.getId(),sw.getStringId(), MacVlanPair.SERIALIZER, Serializer.SHORT);
+    		stable =  new WorkloadLoggerTable<MacVlanPair, Short>((int) sw.getId(), "LS" + sw.getId(), RequestLogger.getRequestLogger(), MacVlanPair.SERIALIZER, Serializer.SHORT);
+    		macVlanToSwitchPortMap.put(sw, stable); 
+    	}
+		return stable;
+	}
 }

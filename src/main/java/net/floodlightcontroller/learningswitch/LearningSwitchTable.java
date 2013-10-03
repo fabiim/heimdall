@@ -33,6 +33,8 @@ import org.restlet.resource.ServerResource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import smartkv.client.tables.KeyValueTable;
+
 public class LearningSwitchTable extends ServerResource {
     protected static Logger log = LoggerFactory.getLogger(LearningSwitchTable.class);
 
@@ -44,7 +46,7 @@ public class LearningSwitchTable extends ServerResource {
         return entry;
     }
 
-    protected List<Map<String, Object>> getOneSwitchTable(Map<MacVlanPair, Short> switchMap) {
+    protected List<Map<String, Object>> getOneSwitchTable(KeyValueTable<MacVlanPair, Short> switchMap) {
         List<Map<String, Object>> switchTable = new ArrayList<Map<String, Object>>();
         for (Entry<MacVlanPair, Short> entry : switchMap.entrySet()) {
             switchTable.add(formatTableEntry(entry.getKey(), entry.getValue()));
@@ -58,7 +60,7 @@ public class LearningSwitchTable extends ServerResource {
                 (ILearningSwitchService)getContext().getAttributes().
                     get(ILearningSwitchService.class.getCanonicalName());
 
-        Map<IOFSwitch, Map<MacVlanPair,Short>> table = lsp.getTable();
+        Map<IOFSwitch, KeyValueTable<MacVlanPair,Short>> table = lsp.getTable();
         Map<String, List<Map<String, Object>>> allSwitchTableJson = new HashMap<String, List<Map<String, Object>>>();
 
         String switchId = (String) getRequestAttributes().get("switch");

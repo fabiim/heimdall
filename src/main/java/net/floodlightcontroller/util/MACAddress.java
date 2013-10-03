@@ -139,6 +139,20 @@ public class MACAddress {
         }
         return (address[0] & 0x01) != 0;
     }
+    
+    public static final boolean isBroadcast(byte[] address ){
+    	 for (byte b : address) {
+             if (b != -1) // checks if equal to 0xff
+                 return false;
+         }
+         return true;
+    }
+    public static final boolean isMulticast(byte[] address) {
+        if (MACAddress.isBroadcast(address)){
+            return false;
+        }
+        return (address[0] & 0x01) != 0;
+    }
 
     @Override
     public boolean equals(Object o) {
