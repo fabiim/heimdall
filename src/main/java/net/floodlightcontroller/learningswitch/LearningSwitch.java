@@ -134,7 +134,7 @@ public class LearningSwitch
         }
 
         
-        swMap.put(new MacVlanPair(mac, vlan), portVal);
+        swMap.insert(new MacVlanPair(mac, vlan), portVal);
     }
     
     /**
@@ -425,7 +425,7 @@ public class LearningSwitch
         }
         
         // Now output flow-mod and/or packet
-        Short outPort =  !MACAddress.isMulticast(match.getDataLayerDestination()) ? getFromPortMap(sw, destMac, vlan) : null ;
+        Short outPort =  !MACAddress.isBroadcast(match.getDataLayerDestination()) ? getFromPortMap(sw, destMac, vlan) : null ;
         if (outPort == null) {
             // If we haven't learned the port for the dest MAC/VLAN, flood it
             // Don't flood broadcast packets if the broadcast is disabled.

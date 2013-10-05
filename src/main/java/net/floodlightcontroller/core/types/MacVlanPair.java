@@ -17,6 +17,8 @@
 
 package net.floodlightcontroller.core.types;
 
+import org.openflow.util.HexString;
+
 import smartkv.client.util.Serializer;
 
 import com.google.common.primitives.Bytes;
@@ -63,7 +65,7 @@ public class MacVlanPair {
 
 	@Override
 	public String toString() {
-		return "MacVlanPair [mac=" + mac + ", vlan=" + vlan + "]";
+		return "MacVlanPair [mac=" + HexString.toHexString(mac) + ", vlan=" + vlan + "]";
 	}
 	
 }
