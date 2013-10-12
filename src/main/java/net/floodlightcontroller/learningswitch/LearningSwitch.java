@@ -66,10 +66,9 @@ import org.openflow.util.HexString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import smartkv.client.tables.CachedKeyValueTable;
-import smartkv.client.tables.ICachedKeyValueTable;
 import smartkv.client.tables.IKeyValueTable;
 import smartkv.client.tables.ITable;
+import smartkv.client.tables.KeyValueTable_;
 import smartkv.client.util.Serializer;
 import smartkv.client.workloads.ActivityEvent;
 import smartkv.client.workloads.RequestLogger;
@@ -86,7 +85,6 @@ public class LearningSwitch
     
     // Stores the learned state for each switch
     protected Map<IOFSwitch, IKeyValueTable<MacVlanPair,Short>> macVlanToSwitchPortMap;
-    /** So due to type suckness i actually need a duplicate map to respect the {@link #getTable()} method*/
 
     // flow-mod - for use in the cookie
     public static final int LEARNING_SWITCH_APP_ID = 1;
@@ -127,19 +125,16 @@ public class LearningSwitch
      * @param portVal The switchport that the host is on
      */
     protected void addToPortMap(IOFSwitch sw, long mac, short vlan, short portVal) {
-        ICachedKeyValueTable<MacVlanPair,Short> swMap = getTable(sw);
+        IKeyValueTable<MacVlanPair,Short> swMap = getTable(sw);
         
         if (vlan == (short) 0xffff) {
             // OFMatch.loadFromPacket sets VLAN ID to 0xffff if the packet contains no VLAN tag;
             // for our purposes that is equivalent to the default VLAN ID 0
             vlan = 0;
         }
-        MacVlanPair key = new MacVlanPair(mac, vlan);
-        Short port =swMap.getCached(key);  
-        //XXX this actually is a pain in the ass since we have to box/unbox a lot of times... 
-        if (port != null && !port.equals(portVal)){
-        	swMap.insert(key, portVal);
-        }
+
+        
+        swMap.insert(new MacVlanPair(mac, vlan), portVal);
     }
     
     /**
@@ -198,14 +193,14 @@ public class LearningSwitch
 
     @Override
     public synchronized Map<IOFSwitch, IKeyValueTable<MacVlanPair,Short>> getTable() {
-        return  macVlanToSwitchPortMap;
+        return macVlanToSwitchPortMap;
     }
 
     /**
      * Writes a OFFlowMod to a switch.
      * @param sw The switch tow rite the flowmod to.
      * @param command The FlowMod actions (add, delete, etc).
-     * @param bufferId The buffeIr ID if the switch has buffered the packet.
+     * @param bufferId The buffer ID if the switch has buffered the packet.
      * @param match The OFMatch structure to write.
      * @param outPort The switch port to output it to.
      */
@@ -415,7 +410,7 @@ public class LearningSwitch
         Long sourceMac = Ethernet.toLong(match.getDataLayerSource());
         Long destMac = Ethernet.toLong(match.getDataLayerDestination());
         Short vlan = match.getDataLayerVirtualLan();
-        ActivityEvent e = RequestLogger.getRequestLogger().addActivity(ActivityEvent.packetIn(" Source: " + HexString.toHexString(sourceMac) +" Destination: " + HexString.toHexString(destMac) + ":" + vlan));
+        ActivityEvent e = RequestLogger.getRequestLogger().addActivity(ActivityEvent.packetIn( pi.getReason().toString()  + " Source: " + HexString.toHexString(sourceMac) +" Destination: " + HexString.toHexString(destMac) + ":" + vlan));
         if ((destMac & 0xfffffffffff0L) == 0x0180c2000000L) {
             if (log.isTraceEnabled()) {
                 log.trace("ignoring packet addressed to 802.1D/Q reserved addr: switch {} vlan {} dest MAC {}",
@@ -429,8 +424,9 @@ public class LearningSwitch
             this.addToPortMap(sw, sourceMac, vlan, pi.getInPort());
         }
         
-        // Now output flow-mod and/or packet FIXME: compare Long directly to check if it is broadcast. 
-        Short outPort =  !MACAddress.isBroadcast(match.getDataLayerDestination()) ? getFromPortMap(sw, destMac, vlan) : null ;
+        // Now output flow-mod and/or packet
+        
+        Short outPort =  destMac != 0xffffffffffffL ? getFromPortMap(sw, destMac, vlan) : null ;
         if (outPort == null) {
             // If we haven't learned the port for the dest MAC/VLAN, flood it
             // Don't flood broadcast packets if the broadcast is disabled.
@@ -582,7 +578,6 @@ public class LearningSwitch
             throws FloodlightModuleException {
         macVlanToSwitchPortMap =
                 new ConcurrentHashMap<IOFSwitch, IKeyValueTable<MacVlanPair,Short>>();
-        
         floodlightProvider =
                 context.getServiceImpl(IFloodlightProviderService.class);
         counterStore =
@@ -638,17 +633,15 @@ public class LearningSwitch
                 FLOWMOD_PRIORITY);
     }
     
-    private final ICachedKeyValueTable<MacVlanPair, Short> getTable(IOFSwitch sw) {
-		ICachedKeyValueTable<MacVlanPair, Short> stable;
+    private final IKeyValueTable<MacVlanPair, Short> getTable(IOFSwitch sw) {
+		IKeyValueTable<MacVlanPair, Short> stable;
 		if (macVlanToSwitchPortMap.containsKey(sw)){
-    		stable = (ICachedKeyValueTable<MacVlanPair, Short>) macVlanToSwitchPortMap.get(sw); 
+    		stable = macVlanToSwitchPortMap.get(sw); 
     	}
     	else{
     		//stable =  KeyValueTable_.<MacVlanPair, Short>getTableAndCreateProxy((int) sw.getId(),sw.getStringId(), MacVlanPair.SERIALIZER, Serializer.SHORT);
-    		stable = CachedKeyValueTable.startCache(new WorkloadLoggerTable<MacVlanPair, Short>((int) sw.getId(), "LS" + sw.getId(), RequestLogger.getRequestLogger(), MacVlanPair.SERIALIZER, Serializer.SHORT)); 
-    		//FIXME : thread safety? 
+    		stable =  new WorkloadLoggerTable<MacVlanPair, Short>((int) sw.getId(), "LS" + sw.getId(), RequestLogger.getRequestLogger(), MacVlanPair.SERIALIZER, Serializer.SHORT);
     		macVlanToSwitchPortMap.put(sw, stable); 
-    		
     	}
 		return stable;
 	}
