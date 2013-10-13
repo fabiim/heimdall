@@ -68,8 +68,6 @@ import org.openflow.util.HexString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.databind.deser.DataFormatReaders.Match;
-
 import smartkv.client.tables.CachedKeyValueTable;
 import smartkv.client.tables.ICachedKeyValueTable;
 import smartkv.client.tables.IKeyValueTable;
@@ -129,7 +127,7 @@ public class LearningSwitch
      * @param vlan The VLAN that the host is on
      * @param portVal The switchport that the host is on
      */
-    protected void addToPortMap(IOFSwitch sw, long mac, short vlan, short portVal) {
+    protected boolean addToPortMap(IOFSwitch sw, long mac, short vlan, short portVal) {
         ICachedKeyValueTable<MacVlanPair,Short> swMap =  getTable(sw);
         
         if (vlan == (short) 0xffff) {
@@ -142,8 +140,9 @@ public class LearningSwitch
         Short port =swMap.getCached(key); //FIXME : so it may happen that  
         //XXX this actually is a pain in the ass since we have to box/unbox a lot of times... 
         if (port == null || !port.equals(portVal)){
-        	swMap.put(key, portVal);
+        	return false;
         }
+        return false; 
     }
     
     /**
@@ -418,7 +417,7 @@ public class LearningSwitch
         Long sourceMac = Ethernet.toLong(match.getDataLayerSource());
         Long destMac = Ethernet.toLong(match.getDataLayerDestination());
         Short vlan = match.getDataLayerVirtualLan();
-        ActivityEvent e = RequestLogger.getRequestLogger().addActivity(ActivityEvent.packetIn(  " Source: " + HexString.toHexString(sourceMac) +" Destination: " + HexString.toHexString(destMac) + ":" + vlan));
+        ActivityEvent e = RequestLogger.getRequestLogger().addActivity(ActivityEvent.packetIn(" Source: " + HexString.toHexString(sourceMac) +" Destination: " + HexString.toHexString(destMac) + ":" + vlan));
         if ((destMac & 0xfffffffffff0L) == 0x0180c2000000L) {
             if (log.isTraceEnabled()) {
                 log.trace("ignoring packet addressed to 802.1D/Q reserved addr: switch {} vlan {} dest MAC {}",
@@ -427,14 +426,19 @@ public class LearningSwitch
             RequestLogger.getRequestLogger().endActivity(e);
             return Command.STOP;
         }
+        boolean added=false; 
         if ((sourceMac & 0x010000000000L) == 0) {
             // If source MAC is a unicast address, learn the port for this MAC/VLAN
-            this.addToPortMap(sw, sourceMac, vlan, pi.getInPort());
+            added = this.addToPortMap(sw, sourceMac, vlan, pi.getInPort());
         }
         
         // Now output flow-mod and/or packet
         
-        Short outPort =  destMac != 0xffffffffffffL ? getFromPortMap(sw, destMac, vlan) : null ;
+        Short outPort =null;
+		if (destMac != 0xffffffffffffL){
+			outPort = getFromPortMap(sw, destMac, vlan);
+		}
+		
         if (outPort == null) {
             // If we haven't learned the port for the dest MAC/VLAN, flood it
             // Don't flood broadcast packets if the broadcast is disabled.
