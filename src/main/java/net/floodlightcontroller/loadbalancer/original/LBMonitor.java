@@ -14,11 +14,7 @@
  *    under the License.
  **/
 
-package net.floodlightcontroller.loadbalancer;
-
-import java.io.Serializable;
-
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+package net.floodlightcontroller.loadbalancer.original;
 
 /**
  * Data structure for Load Balancer based on
@@ -27,34 +23,38 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
  * @author KC Wang
  */
 
-@JsonSerialize(using=LBMemberSerializer.class)
-public class LBMember implements Serializable {
-    /**
-	 * 
-	 */
-	private static final long serialVersionUID = 1L;
-	protected String id;
-    protected int address;
-    protected short port;
-    protected String macString;
+public class LBMonitor {
+    protected String id;
+    protected String name;
+    protected short type;
+    protected short delay;
+    protected short timeout;
+    protected short attemptsBeforeDeactivation;
     
-    protected int connectionLimit;
+    protected String netId;
+    protected int address;
+    protected byte protocol;
+    protected short port;
+
+    //protected path??
+    
     protected short adminState;
     protected short status;
 
-    protected String poolId;
-    protected String vipId;
-    
-    public LBMember() {
-        id = String.valueOf((int) (Math.random()*10000));
+    public LBMonitor() {
+        id = null;
+        name = null;
+        type = 0;
+        delay = 0;
+        timeout = 0;
+        attemptsBeforeDeactivation = 0;
+        netId = null;
         address = 0;
-        macString = null;
+        protocol = 0;
         port = 0;
-        
-        connectionLimit = 0;
         adminState = 0;
         status = 0;
-        poolId = null;
-        vipId = null;
+        
     }
+    
 }

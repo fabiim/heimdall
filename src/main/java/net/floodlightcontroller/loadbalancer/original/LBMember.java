@@ -14,9 +14,7 @@
  *    under the License.
  **/
 
-package net.floodlightcontroller.loadbalancer;
-
-import java.io.Serializable;
+package net.floodlightcontroller.loadbalancer.original;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 
@@ -28,12 +26,8 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
  */
 
 @JsonSerialize(using=LBMemberSerializer.class)
-public class LBMember implements Serializable {
-    /**
-	 * 
-	 */
-	private static final long serialVersionUID = 1L;
-	protected String id;
+public class LBMember {
+    protected String id;
     protected int address;
     protected short port;
     protected String macString;

@@ -14,13 +14,13 @@
  *    under the License.
  **/
 
-package net.floodlightcontroller.loadbalancer;
+package net.floodlightcontroller.loadbalancer.original;
 
-import java.io.Serializable;
 import java.util.ArrayList;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-import com.google.common.collect.Lists;
+
+import net.floodlightcontroller.loadbalancer.original.LoadBalancer.IPClient;
 
 /**
  * Data structure for Load Balancer based on
@@ -31,25 +31,21 @@ import com.google.common.collect.Lists;
 
 
 @JsonSerialize(using=LBPoolSerializer.class)
-public class LBPool implements Serializable{
-    /**
-	 * 
-	 */
-	private static final long serialVersionUID = 1L;
-	protected String id;
+public class LBPool {
+    protected String id;
     protected String name;
     protected String tenantId;
     protected String netId;
     protected short lbMethod;
     protected byte protocol;
-    ArrayList<String> members;
-    private ArrayList<String> monitors;
+    protected ArrayList<String> members;
+    protected ArrayList<String> monitors;
     protected short adminState;
     protected short status;
     
     protected String vipId;
     
-    private int previousMemberIndex;
+    protected int previousMemberIndex;
     
     public LBPool() {
         id = String.valueOf((int) (Math.random()*10000));
@@ -63,27 +59,6 @@ public class LBPool implements Serializable{
         adminState = 0;
         status = 0;
         previousMemberIndex = -1;
-    }
-    
-    public LBPool(LBPool pool) {
-    	this.id = pool.id; 
-    	this.name = pool.name; 
-    	this.tenantId = pool.tenantId; 
-    	this.netId = pool.netId; 
-    	this.lbMethod = pool.lbMethod; 
-    	this.protocol = pool.protocol; 
-    	this.members = new ArrayList<String>() ; 
-    	for (String s : pool.members){
-    		this.members.add(s);
-    	}
-    	this.monitors = new ArrayList<String>(); 
-    	for (String s : pool.monitors){
-    		this.members.add(s);
-    	}
-    	this.adminState = pool.adminState; 
-    	this.status = pool.status; 
-    	this.previousMemberIndex = pool.previousMemberIndex; 
-    	this.vipId = pool.vipId; 
     }
     
     public String pickMember(IPClient client) {

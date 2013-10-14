@@ -14,7 +14,7 @@
  *    under the License.
  **/
 
-package net.floodlightcontroller.loadbalancer;
+package net.floodlightcontroller.loadbalancer.original;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -29,12 +29,33 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.io.Serializable;
 
-
+import org.openflow.protocol.OFFlowMod;
+import org.openflow.protocol.OFMatch;
+import org.openflow.protocol.OFMessage;
+import org.openflow.protocol.OFPacketIn;
+import org.openflow.protocol.OFPacketOut;
+import org.openflow.protocol.OFPort;
+import org.openflow.protocol.OFType;
+import org.openflow.protocol.action.OFAction;
+import org.openflow.protocol.action.OFActionDataLayerDestination;
+import org.openflow.protocol.action.OFActionDataLayerSource;
+import org.openflow.protocol.action.OFActionEnqueue;
+import org.openflow.protocol.action.OFActionNetworkLayerDestination;
+import org.openflow.protocol.action.OFActionNetworkLayerSource;
+import org.openflow.protocol.action.OFActionNetworkTypeOfService;
+import org.openflow.protocol.action.OFActionOutput;
+import org.openflow.protocol.action.OFActionStripVirtualLan;
+import org.openflow.protocol.action.OFActionTransportLayerDestination;
+import org.openflow.protocol.action.OFActionTransportLayerSource;
+import org.openflow.protocol.action.OFActionVirtualLanIdentifier;
+import org.openflow.protocol.action.OFActionVirtualLanPriorityCodePoint;
+import org.openflow.util.HexString;
+import org.openflow.util.U16;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import net.floodlightcontroller.core.FloodlightContext;
-import net.floodlightcontroller.core.HeimdallInfo;
 import net.floodlightcontroller.core.IFloodlightProviderService;
 import net.floodlightcontroller.core.IOFMessageListener;
 import net.floodlightcontroller.core.IOFSwitch;
@@ -62,36 +83,6 @@ import net.floodlightcontroller.topology.NodePortTuple;
 import net.floodlightcontroller.util.MACAddress;
 import net.floodlightcontroller.util.OFMessageDamper;
 
-import org.openflow.protocol.OFFlowMod;
-import org.openflow.protocol.OFMatch;
-import org.openflow.protocol.OFMessage;
-import org.openflow.protocol.OFPacketIn;
-import org.openflow.protocol.OFPacketOut;
-import org.openflow.protocol.OFPort;
-import org.openflow.protocol.OFType;
-import org.openflow.protocol.action.OFAction;
-import org.openflow.protocol.action.OFActionDataLayerDestination;
-import org.openflow.protocol.action.OFActionDataLayerSource;
-import org.openflow.protocol.action.OFActionEnqueue;
-import org.openflow.protocol.action.OFActionNetworkLayerDestination;
-import org.openflow.protocol.action.OFActionNetworkLayerSource;
-import org.openflow.protocol.action.OFActionNetworkTypeOfService;
-import org.openflow.protocol.action.OFActionOutput;
-import org.openflow.protocol.action.OFActionStripVirtualLan;
-import org.openflow.protocol.action.OFActionTransportLayerDestination;
-import org.openflow.protocol.action.OFActionTransportLayerSource;
-import org.openflow.protocol.action.OFActionVirtualLanIdentifier;
-import org.openflow.protocol.action.OFActionVirtualLanPriorityCodePoint;
-import org.openflow.util.HexString;
-import org.openflow.util.U16;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import smartkv.client.tables.IKeyValueTable;
-import smartkv.client.workloads.ActivityEvent;
-import smartkv.client.workloads.RequestLogger;
-import smartkv.client.workloads.WorkloadLoggerTable;
-
 /**
  * A simple load balancer module for ping, tcp, and udp flows. This module is accessed 
  * via a REST API defined close to the OpenStack Quantum LBaaS (Load-balancer-as-a-Service)
@@ -105,22 +96,6 @@ import smartkv.client.workloads.WorkloadLoggerTable;
  *  
  * @author kcwang
  */
-
-//data structure for storing connected
-class IPClient implements Serializable{
-    int ipAddress;
-    byte nw_proto;
-    short srcPort; // tcp/udp src port. icmp type (OFMatch convention)
-    short targetPort; // tcp/udp dst port, icmp code (OFMatch convention)
-    
-    public IPClient() {
-        ipAddress = 0;
-        nw_proto = 0;
-        srcPort = -1;
-        targetPort = -1;
-    }
-}
-
 public class LoadBalancer implements IFloodlightModule,
     ILoadBalancerService, IOFMessageListener {
 
@@ -137,13 +112,13 @@ public class LoadBalancer implements IFloodlightModule,
     protected ITopologyService topology;
     protected IStaticFlowEntryPusherService sfp;
     
-    protected IKeyValueTable<String, LBVip> vips;
-    protected IKeyValueTable<String, LBPool> pools;
-    protected IKeyValueTable<String, LBMember> members;
-    protected IKeyValueTable<Integer, String> vipIpToId;
-    protected IKeyValueTable<Integer, MACAddress> vipIpToMac;
-    protected IKeyValueTable<Integer, String> memberIpToId;
-    protected IKeyValueTable<IPClient, LBMember> clientToMember;
+    protected HashMap<String, LBVip> vips;
+    protected HashMap<String, LBPool> pools;
+    protected HashMap<String, LBMember> members;
+    protected HashMap<Integer, String> vipIpToId;
+    protected HashMap<Integer, MACAddress> vipIpToMac;
+    protected HashMap<Integer, String> memberIpToId;
+    protected HashMap<IPClient, LBMember> clientToMember;
     
     //Copied from Forwarding with message damper routine for pushing proxy Arp 
     protected static int OFMESSAGE_DAMPER_CAPACITY = 10000; // ms. 
@@ -164,7 +139,21 @@ public class LoadBalancer implements IFloodlightModule,
                 }
             };
 
+    // data structure for storing connected
+    public class IPClient {
+        int ipAddress;
+        byte nw_proto;
+        short srcPort; // tcp/udp src port. icmp type (OFMatch convention)
+        short targetPort; // tcp/udp dst port, icmp code (OFMatch convention)
         
+        public IPClient() {
+            ipAddress = 0;
+            nw_proto = 0;
+            srcPort = -1;
+            targetPort = -1;
+        }
+    }
+    
     @Override
     public String getName() {
         return "loadbalancer";
@@ -203,7 +192,7 @@ public class LoadBalancer implements IFloodlightModule,
         Ethernet eth = IFloodlightProviderService.bcStore.get(cntx,
                                                               IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
         IPacket pkt = eth.getPayload();
-        ActivityEvent event = RequestLogger.getRequestLogger().addActivity(ActivityEvent.packetIn(eth.toString() + "| "+  eth.getPayload().toString())); 
+ 
         if (eth.isBroadcast() || eth.isMulticast()) {
             // handle ARP for VIP
             if (pkt instanceof ARP) {
@@ -212,10 +201,10 @@ public class LoadBalancer implements IFloodlightModule,
 
                 int targetProtocolAddress = IPv4.toIPv4Address(arpRequest
                                                                .getTargetProtocolAddress());
-                String vipId = vipIpToId.get(targetProtocolAddress); 
-                if (vipId != null) {
+
+                if (vipIpToId.containsKey(targetProtocolAddress)) {
+                    String vipId = vipIpToId.get(targetProtocolAddress);
                     vipProxyArpReply(sw, pi, cntx, vipId);
-                    RequestLogger.getRequestLogger().endActivity(event);
                     return Command.STOP;
                 }
             }
@@ -226,8 +215,8 @@ public class LoadBalancer implements IFloodlightModule,
                 
                 // If match Vip and port, check pool and choose member
                 int destIpAddress = ip_pkt.getDestinationAddress();
-                String vipIP = vipIpToId.get(destIpAddress); 
-                if (vipIP != null){
+                
+                if (vipIpToId.containsKey(destIpAddress)){
                     IPClient client = new IPClient();
                     client.ipAddress = ip_pkt.getSourceAddress();
                     client.nw_proto = ip_pkt.getProtocol();
@@ -246,33 +235,21 @@ public class LoadBalancer implements IFloodlightModule,
                         client.targetPort = 0; 
                     }
                     
-                    LBVip vip = vips.get(vipIP);
-                    if (vip != null){
-                    	boolean replaced = false; 
-                    	LBMember member;
-                    	String memberId; 
-                    	do{
-                    		String id = vip.pickPool(client);
-                    		LBPool pool = pools.get(id);
-                    		LBPool oldPool = new LBPool(pool);
-                    		 memberId = pool.pickMember(client);
-                    		replaced = pools.replace(id,oldPool, pool);
-                    	}while(!replaced); 
-                		member = members.get(memberId);                    	
-                    	// for chosen member, check device manager and find and push routes, in both directions                    
-                    	pushBidirectionalVipRoutes(sw, pi, cntx, client, member, vip);
-                    	
-                    	// packet out based on table rule
-                    	pushPacket(pkt, sw, pi.getBufferId(), pi.getInPort(), OFPort.OFPP_TABLE.getValue(),
+                    LBVip vip = vips.get(vipIpToId.get(destIpAddress));
+                    LBPool pool = pools.get(vip.pickPool(client));
+                    LBMember member = members.get(pool.pickMember(client));
+
+                    // for chosen member, check device manager and find and push routes, in both directions                    
+                    pushBidirectionalVipRoutes(sw, pi, cntx, client, member);
+                   
+                    // packet out based on table rule
+                    pushPacket(pkt, sw, pi.getBufferId(), pi.getInPort(), OFPort.OFPP_TABLE.getValue(),
                                 cntx, true);
-                    	
-                    	RequestLogger.getRequestLogger().endActivity(event);
-                    	return Command.STOP;
-                    }
+
+                    return Command.STOP;
                 }
             }
         }
-        RequestLogger.getRequestLogger().endActivity(event);
         // bypass non-load-balanced traffic for normal processing (forwarding)
         return Command.CONTINUE;
     }
@@ -295,9 +272,9 @@ public class LoadBalancer implements IFloodlightModule,
         if (! (eth.getPayload() instanceof ARP))
             return;
         ARP arpRequest = (ARP) eth.getPayload();
-        LBVip vip = vips.get(vipId); //FIXME yeah right, may not exist anymore... Stupid summer of code.
+        
         // have to do proxy arp reply since at this point we cannot determine the requesting application type
-        byte[] vipProxyMacBytes = vip.proxyMac.toBytes();
+        byte[] vipProxyMacBytes = vips.get(vipId).proxyMac.toBytes();
         
         // generate proxy ARP reply
         IPacket arpReply = new Ethernet()
@@ -324,7 +301,7 @@ public class LoadBalancer implements IFloodlightModule,
         // push ARP reply out
         pushPacket(arpReply, sw, OFPacketOut.BUFFER_ID_NONE, OFPort.OFPP_NONE.getValue(),
                    pi.getInPort(), cntx, true);
-        log.debug("proxy ARP reply pushed as {}", IPv4.fromIPv4Address(vip.address));
+        log.debug("proxy ARP reply pushed as {}", IPv4.fromIPv4Address(vips.get(vipId).address));
         
         return;
     }
@@ -395,14 +372,13 @@ public class LoadBalancer implements IFloodlightModule,
 
     /**
      * used to find and push in-bound and out-bound routes using StaticFlowEntryPusher
-     * @param vip 
      * @param IOFSwitch sw
      * @param OFPacketIn pi
      * @param FloodlightContext cntx
      * @param IPClient client
      * @param LBMember member
      */
-    protected void pushBidirectionalVipRoutes(IOFSwitch sw, OFPacketIn pi, FloodlightContext cntx, IPClient client, LBMember member, LBVip vip) {
+    protected void pushBidirectionalVipRoutes(IOFSwitch sw, OFPacketIn pi, FloodlightContext cntx, IPClient client, LBMember member) {
         
         // borrowed code from Forwarding to retrieve src and dst device entities
         // Check if we have the location of the destination
@@ -412,7 +388,7 @@ public class LoadBalancer implements IFloodlightModule,
         // retrieve all known devices
         Collection<? extends IDevice> allDevices = deviceManager
                 .getAllDevices();
-        //XXX serious performance problem in the long run... 
+        
         for (IDevice d : allDevices) {
             for (int j = 0; j < d.getIPv4Addresses().length; j++) {
                     if (srcDevice == null && client.ipAddress == d.getIPv4Addresses()[j])
@@ -430,13 +406,13 @@ public class LoadBalancer implements IFloodlightModule,
         if (srcDevice == null || dstDevice == null) return;
         
         Long srcIsland = topology.getL2DomainId(sw.getId());
-        
+
         if (srcIsland == null) {
             log.debug("No openflow island found for source {}/{}", 
                       sw.getStringId(), pi.getInPort());
             return;
         }
-
+        
         // Validate that we have a destination known on the same island
         // Validate that the source and destination are not on the same switchport
         boolean on_same_island = false;
@@ -513,11 +489,11 @@ public class LoadBalancer implements IFloodlightModule,
                     // out: match dest client (ip, port), rewrite src from member ip/port to vip ip/port, forward
                     
                     if (routeIn != null) {
-                        pushStaticVipRoute(true, routeIn, client, member, sw.getId(), vip);
+                        pushStaticVipRoute(true, routeIn, client, member, sw.getId());
                     }
                     
                     if (routeOut != null) {
-                        pushStaticVipRoute(false, routeOut, client, member, sw.getId(),vip);
+                        pushStaticVipRoute(false, routeOut, client, member, sw.getId());
                     }
 
                 }
@@ -540,7 +516,7 @@ public class LoadBalancer implements IFloodlightModule,
      * @param LBMember member
      * @param long pinSwitch
      */
-    public void pushStaticVipRoute(boolean inBound, Route route, IPClient client, LBMember member, long pinSwitch, LBVip vipH) {
+    public void pushStaticVipRoute(boolean inBound, Route route, IPClient client, LBMember member, long pinSwitch) {
         List<NodePortTuple> path = route.getPath();
         if (path.size()>0) {
            for (int i = 0; i < path.size(); i+=2) {
@@ -590,8 +566,8 @@ public class LoadBalancer implements IFloodlightModule,
                                + "in_port="+String.valueOf(path.get(i).getPortId());
 
                    if (sw == pinSwitch) {
-                       actionString = "set-src-ip="+IPv4.fromIPv4Address(vipH.address)+","
-                               + "set-src-mac="+vipH.proxyMac.toString()+","
+                       actionString = "set-src-ip="+IPv4.fromIPv4Address(vips.get(member.vipId).address)+","
+                               + "set-src-mac="+vips.get(member.vipId).proxyMac.toString()+","
                                + "output="+path.get(i+1).getPortId();
                    } else {
                        actionString = "output="+path.get(i+1).getPortId();
@@ -646,7 +622,7 @@ public class LoadBalancer implements IFloodlightModule,
 
     @Override
     public LBVip updateVip(LBVip vip) {
-        vips.insert(vip.id, vip);
+        vips.put(vip.id, vip);
         return vip;
     }
 
@@ -677,28 +653,20 @@ public class LoadBalancer implements IFloodlightModule,
         if (pool==null)
             pool = new LBPool();
         
-        
-        if (pool.vipId != null && vips.containsKey(pool.vipId)){
-        	//boolean replaced = false; 
-        	//do{
-        		LBVip lbVip = vips.get(pool.vipId);
-        		//LBVip oldVip = new LBVip(lbVip); FIXME 
-        		lbVip.pools.add(pool.id);
-        		vips.put(pool.vipId,lbVip);
-        		
-        	//}while(!replaced);
-        }
+        pools.put(pool.id, pool);
+        if (pool.vipId != null && vips.containsKey(pool.vipId))
+            vips.get(pool.vipId).pools.add(pool.id);
         else {
             log.error("specified vip-id must exist");
             pool.vipId = null;
+            pools.put(pool.id, pool);
         }
-        pools.insert(pool.id, pool);
         return pool;
     }
 
     @Override
     public LBPool updatePool(LBPool pool) {
-        pools.put(pool.id, pool);	
+        pools.put(pool.id, pool);
         return null;
     }
 
@@ -707,16 +675,8 @@ public class LoadBalancer implements IFloodlightModule,
         LBPool pool;
         if(pools!=null){
             pool = pools.get(poolId);
-            if (pool.vipId != null){
-            	boolean replaced = false; 
-            	do{
-            		LBVip vip = vips.get(pool.vipId);
-            		LBVip oldVip = new LBVip(vip); 
-            		vip.pools.remove(poolId);
-            		replaced = vips.replace(pool.vipId, oldVip, vip); 
-            	}while(!replaced); 
-            	
-            }
+            if (pool.vipId != null)
+                vips.get(pool.vipId).pools.remove(poolId);
             pools.remove(poolId);
             return 0;
         } else {
@@ -753,25 +713,16 @@ public class LoadBalancer implements IFloodlightModule,
         if (member == null)
             member = new LBMember();
 
-        
-        
-        if (member.poolId != null && pools.get(member.poolId) != null) {
-            member.vipId = pools.get(member.poolId).vipId;
-            if (!pools.get(member.poolId).members.contains(member.id)){
-            	//boolean replaced = false;
-            	//do{
-            		LBPool pol =  pools.get(member.poolId); 
-            		//LBPool oldPol = new LBPool(pol); 
-            		pol.members.add(member.id);
-            		//replaced = pools.replace(pol.id, oldPol, pol);
-            		pools.put(pol.id, pol); 
-            	//}while (!replaced); 
-            }
-        } else
-            log.error("member must be specified with non-null pool_id");
-
         members.put(member.id, member);
         memberIpToId.put(member.address, member.id);
+
+        if (member.poolId != null && pools.get(member.poolId) != null) {
+            member.vipId = pools.get(member.poolId).vipId;
+            if (!pools.get(member.poolId).members.contains(member.id))
+                pools.get(member.poolId).members.add(member.id);
+        } else
+            log.error("member must be specified with non-null pool_id");
+        
         return member;
     }
 
@@ -787,15 +738,8 @@ public class LoadBalancer implements IFloodlightModule,
         member = members.get(memberId);
         
         if(member != null){
-            if (member.poolId != null){
-            	boolean replaced = false; 
-            	do {
-            		LBPool p = pools.get(member.poolId);
-            		LBPool oldPool = new LBPool(p);
-            		p.members.remove(memberId);
-            		replaced = pools.replace(p.id, oldPool, p);
-            	}while (!replaced); 
-            }
+            if (member.poolId != null)
+                pools.get(member.poolId).members.remove(memberId);
             members.remove(memberId);
             return 0;
         } else {
@@ -883,13 +827,12 @@ public class LoadBalancer implements IFloodlightModule,
                                             EnumSet.of(OFType.FLOW_MOD),
                                             OFMESSAGE_DAMPER_TIMEOUT);
         
-        int id = HeimdallInfo.getInfo().myControllerId();
-        vips = new WorkloadLoggerTable<String, LBVip>(id, "LB-VIPS", RequestLogger.getRequestLogger());
-        pools = new WorkloadLoggerTable<String, LBPool>(id, "LB-POOLS" , RequestLogger.getRequestLogger()); 
-        members = new WorkloadLoggerTable<String, LBMember>(id, "LB-MEMBERS" , RequestLogger.getRequestLogger());
-        vipIpToId = new WorkloadLoggerTable<Integer, String>(id, "LB-VIP2ID", RequestLogger.getRequestLogger());
-        vipIpToMac = new WorkloadLoggerTable<Integer, MACAddress>(id, "LB-VIP2MAC" , RequestLogger.getRequestLogger());
-        memberIpToId = new WorkloadLoggerTable<Integer, String>(id,  "MIP2ID", RequestLogger.getRequestLogger()); 
+        vips = new HashMap<String, LBVip>();
+        pools = new HashMap<String, LBPool>();
+        members = new HashMap<String, LBMember>();
+        vipIpToId = new HashMap<Integer, String>();
+        vipIpToMac = new HashMap<Integer, MACAddress>();
+        memberIpToId = new HashMap<Integer, String>();
     }
 
     @Override
