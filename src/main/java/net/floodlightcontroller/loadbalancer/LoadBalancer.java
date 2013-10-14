@@ -17,6 +17,7 @@
 package net.floodlightcontroller.loadbalancer;
 
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -29,9 +30,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.io.Serializable;
-
-
 
 import net.floodlightcontroller.core.FloodlightContext;
 import net.floodlightcontroller.core.HeimdallInfo;
@@ -88,6 +86,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import smartkv.client.tables.IKeyValueTable;
+import smartkv.client.tables.VersionedValue;
 import smartkv.client.workloads.ActivityEvent;
 import smartkv.client.workloads.RequestLogger;
 import smartkv.client.workloads.WorkloadLoggerTable;
@@ -250,10 +249,9 @@ public class LoadBalancer implements IFloodlightModule,
                     String memberId; 
                     do{
                     	String id = vip.pickPool(client);
-                    	LBPool pool = pools.get(id);
-                    	LBPool oldPool = new LBPool(pool);
-                    	memberId = pool.pickMember(client);
-                    	replaced = pools.replace(id,oldPool, pool);
+                    	VersionedValue<LBPool> pool = pools.getWithTimeStamp(id); // FIXME can be null. 
+                    	memberId = pool.value().pickMember(client);
+                    	replaced = pools.replace(id,pool.version(), pool.value());
                     }while(!replaced); 
                     member = members.get(memberId);                    	
                     // for chosen member, check device manager and find and push routes, in both directions                    
