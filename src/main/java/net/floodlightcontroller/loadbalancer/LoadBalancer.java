@@ -212,9 +212,9 @@ public class LoadBalancer implements IFloodlightModule,
 
                 int targetProtocolAddress = IPv4.toIPv4Address(arpRequest
                                                                .getTargetProtocolAddress());
-                String vipId = vipIpToId.get(targetProtocolAddress); 
-                if (vipId != null) {
-                    vipProxyArpReply(sw, pi, cntx, vipId);
+                LBVip vip = vipIpToId.getValueByReference(targetProtocolAddress);
+                if (vip != null) {
+                    vipProxyArpReply(sw, pi, cntx, vip);
                     RequestLogger.getRequestLogger().endActivity(event);
                     return Command.STOP;
                 }
@@ -226,8 +226,8 @@ public class LoadBalancer implements IFloodlightModule,
                 
                 // If match Vip and port, check pool and choose member
                 int destIpAddress = ip_pkt.getDestinationAddress();
-                String vipIP = vipIpToId.get(destIpAddress); 
-                if (vipIP != null){
+                LBVip vip = vipIpToId.getValueByReference(destIpAddress); 
+                if (vip != null){
                     IPClient client = new IPClient();
                     client.ipAddress = ip_pkt.getSourceAddress();
                     client.nw_proto = ip_pkt.getProtocol();
@@ -245,30 +245,26 @@ public class LoadBalancer implements IFloodlightModule,
                         client.srcPort = 8; 
                         client.targetPort = 0; 
                     }
-                    
-                    LBVip vip = vips.get(vipIP);
-                    if (vip != null){
-                    	boolean replaced = false; 
-                    	LBMember member;
-                    	String memberId; 
-                    	do{
-                    		String id = vip.pickPool(client);
-                    		LBPool pool = pools.get(id);
-                    		LBPool oldPool = new LBPool(pool);
-                    		 memberId = pool.pickMember(client);
-                    		replaced = pools.replace(id,oldPool, pool);
-                    	}while(!replaced); 
-                		member = members.get(memberId);                    	
-                    	// for chosen member, check device manager and find and push routes, in both directions                    
-                    	pushBidirectionalVipRoutes(sw, pi, cntx, client, member, vip);
-                    	
-                    	// packet out based on table rule
-                    	pushPacket(pkt, sw, pi.getBufferId(), pi.getInPort(), OFPort.OFPP_TABLE.getValue(),
-                                cntx, true);
-                    	
-                    	RequestLogger.getRequestLogger().endActivity(event);
-                    	return Command.STOP;
-                    }
+                    boolean replaced = false; 
+                    LBMember member;
+                    String memberId; 
+                    do{
+                    	String id = vip.pickPool(client);
+                    	LBPool pool = pools.get(id);
+                    	LBPool oldPool = new LBPool(pool);
+                    	memberId = pool.pickMember(client);
+                    	replaced = pools.replace(id,oldPool, pool);
+                    }while(!replaced); 
+                    member = members.get(memberId);                    	
+                    // for chosen member, check device manager and find and push routes, in both directions                    
+                    pushBidirectionalVipRoutes(sw, pi, cntx, client, member, vip);
+
+                    // packet out based on table rule
+                    pushPacket(pkt, sw, pi.getBufferId(), pi.getInPort(), OFPort.OFPP_TABLE.getValue(),
+                    		cntx, true);
+
+                    RequestLogger.getRequestLogger().endActivity(event);
+                    return Command.STOP;
                 }
             }
         }
@@ -285,7 +281,7 @@ public class LoadBalancer implements IFloodlightModule,
      * @param String vipId
      */
     
-    protected void vipProxyArpReply(IOFSwitch sw, OFPacketIn pi, FloodlightContext cntx, String vipId) {
+    protected void vipProxyArpReply(IOFSwitch sw, OFPacketIn pi, FloodlightContext cntx, LBVip vip) {
         log.debug("vipProxyArpReply");
             
         Ethernet eth = IFloodlightProviderService.bcStore.get(cntx,
@@ -295,7 +291,7 @@ public class LoadBalancer implements IFloodlightModule,
         if (! (eth.getPayload() instanceof ARP))
             return;
         ARP arpRequest = (ARP) eth.getPayload();
-        LBVip vip = vips.get(vipId); //FIXME yeah right, may not exist anymore... Stupid summer of code.
+        
         // have to do proxy arp reply since at this point we cannot determine the requesting application type
         byte[] vipProxyMacBytes = vip.proxyMac.toBytes();
         
@@ -887,7 +883,7 @@ public class LoadBalancer implements IFloodlightModule,
         vips = new WorkloadLoggerTable<String, LBVip>(id, "LB-VIPS", RequestLogger.getRequestLogger());
         pools = new WorkloadLoggerTable<String, LBPool>(id, "LB-POOLS" , RequestLogger.getRequestLogger()); 
         members = new WorkloadLoggerTable<String, LBMember>(id, "LB-MEMBERS" , RequestLogger.getRequestLogger());
-        vipIpToId = new WorkloadLoggerTable<Integer, String>(id, "LB-VIP2ID", RequestLogger.getRequestLogger());
+        vipIpToId = WorkloadLoggerTable.<Integer,String>workloadLoggerDefaultCrossReference(id, "LB-VIP2ID", RequestLogger.getRequestLogger(),"LB-VIPS");
         vipIpToMac = new WorkloadLoggerTable<Integer, MACAddress>(id, "LB-VIP2MAC" , RequestLogger.getRequestLogger());
         memberIpToId = new WorkloadLoggerTable<Integer, String>(id,  "MIP2ID", RequestLogger.getRequestLogger()); 
     }
