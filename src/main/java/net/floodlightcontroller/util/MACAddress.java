@@ -16,6 +16,7 @@
 
 package net.floodlightcontroller.util;
 
+import java.io.Serializable;
 import java.util.Arrays;
 
 /**
@@ -23,8 +24,12 @@ import java.util.Arrays;
  *
  * @author Sho Shimizu (sho.shimizu@gmail.com)
  */
-public class MACAddress {
-    public static final int MAC_ADDRESS_LENGTH = 6;
+public class MACAddress implements Serializable {
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
+	public static final int MAC_ADDRESS_LENGTH = 6;
     private byte[] address = new byte[MAC_ADDRESS_LENGTH];
 
     public MACAddress(byte[] address) {

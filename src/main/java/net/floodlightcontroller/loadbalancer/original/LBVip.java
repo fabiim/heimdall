@@ -14,18 +14,14 @@
  *    under the License.
  **/
 
-package net.floodlightcontroller.loadbalancer;
+package net.floodlightcontroller.loadbalancer.original;
 
-import java.io.Serializable;
 import java.util.ArrayList;
 
-import net.floodlightcontroller.util.MACAddress;
-
-
-
-
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-import com.google.common.collect.Lists;
+
+import net.floodlightcontroller.loadbalancer.original.LoadBalancer.IPClient;
+import net.floodlightcontroller.util.MACAddress;
 
 /**
  * Data structure for Load Balancer based on
@@ -35,7 +31,7 @@ import com.google.common.collect.Lists;
  */
 
 @JsonSerialize(using=LBVipSerializer.class)
-public class LBVip implements Serializable{
+public class LBVip {
     protected String id;    
     protected String name;
     protected String tenantId;
@@ -72,27 +68,7 @@ public class LBVip implements Serializable{
         this.proxyMac = MACAddress.valueOf(LB_PROXY_MAC);
     }
     
-    /**
-	 * @param lbVip
-	 */
-	public LBVip(LBVip lbVip) {
-		this.id = lbVip.id; 
-		this.name = lbVip.name; 
-		this.tenantId = lbVip.tenantId; 
-		this.netId = lbVip.netId; 
-		this.address = lbVip.address; 
-		this.protocol = lbVip.protocol; 
-		this.lbMethod = lbVip.lbMethod; 
-		this.port = lbVip.port; 
-		this.pools = Lists.newArrayList(lbVip.pools);
-		this.sessionPersistence = lbVip.sessionPersistence; 
-		this.connectionLimit = lbVip.connectionLimit; 
-		this.address = lbVip.address; 
-		this.status = lbVip.status; 
-		this.proxyMac = lbVip.proxyMac; 
-	}
-
-	public String pickPool(IPClient client) {
+    public String pickPool(IPClient client) {
         // for now, return the first pool; consider different pool choice policy later
         if (pools.size() > 0)
             return pools.get(0);
