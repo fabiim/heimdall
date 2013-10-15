@@ -85,6 +85,8 @@ import org.openflow.util.U16;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import smartkv.client.tables.CachedKeyValueTable;
+import smartkv.client.tables.ICachedKeyValueTable;
 import smartkv.client.tables.IKeyValueTable;
 import smartkv.client.tables.VersionedValue;
 import smartkv.client.workloads.ActivityEvent;
@@ -123,7 +125,10 @@ class IPClient implements Serializable{
 public class LoadBalancer implements IFloodlightModule,
     ILoadBalancerService, IOFMessageListener {
 
-    protected static Logger log = LoggerFactory.getLogger(LoadBalancer.class);
+	private static final long VIPS_ACCEPTED_STALENESS_MS = 200;
+	private static final long MEMBERS_ACCEPTED_STALENESS_MS = 200;
+
+	protected static Logger log = LoggerFactory.getLogger(LoadBalancer.class);
 
     // Our dependencies
     protected IFloodlightProviderService floodlightProvider;
@@ -136,10 +141,10 @@ public class LoadBalancer implements IFloodlightModule,
     protected ITopologyService topology;
     protected IStaticFlowEntryPusherService sfp;
     
-    protected IKeyValueTable<String, LBVip> vips;
+    protected ICachedKeyValueTable<String, LBVip> vips;
     protected IKeyValueTable<String, LBPool> pools;
-    protected IKeyValueTable<String, LBMember> members;
-    protected IKeyValueTable<Integer, String> vipIpToId;
+    protected ICachedKeyValueTable<String, LBMember> members;
+    protected ICachedKeyValueTable<Integer, String> vipIpToId;
     protected IKeyValueTable<Integer, MACAddress> vipIpToMac;
     protected IKeyValueTable<Integer, String> memberIpToId;
     protected IKeyValueTable<IPClient, LBMember> clientToMember;
@@ -211,7 +216,7 @@ public class LoadBalancer implements IFloodlightModule,
 
                 int targetProtocolAddress = IPv4.toIPv4Address(arpRequest
                                                                .getTargetProtocolAddress());
-                LBVip vip = vipIpToId.getValueByReference(targetProtocolAddress);
+                LBVip vip = vipIpToId.getValueByReference(targetProtocolAddress, LoadBalancer.VIPS_ACCEPTED_STALENESS_MS);
                 if (vip != null) {
                     vipProxyArpReply(sw, pi, cntx, vip);
                     RequestLogger.getRequestLogger().endActivity(event);
@@ -225,7 +230,7 @@ public class LoadBalancer implements IFloodlightModule,
                 
                 // If match Vip and port, check pool and choose member
                 int destIpAddress = ip_pkt.getDestinationAddress();
-                LBVip vip = vipIpToId.getValueByReference(destIpAddress); 
+                LBVip vip = vipIpToId.getValueByReference(destIpAddress, LoadBalancer.VIPS_ACCEPTED_STALENESS_MS); 
                 if (vip != null){
                     IPClient client = new IPClient();
                     client.ipAddress = ip_pkt.getSourceAddress();
@@ -253,7 +258,7 @@ public class LoadBalancer implements IFloodlightModule,
                     	memberId = pool.value().pickMember(client);
                     	replaced = pools.replace(id,pool.version(), pool.value());
                     }while(!replaced); 
-                    member = members.get(memberId);                    	
+                    member = members.get(memberId, MEMBERS_ACCEPTED_STALENESS_MS);                    	
                     // for chosen member, check device manager and find and push routes, in both directions                    
                     pushBidirectionalVipRoutes(sw, pi, cntx, client, member, vip);
 
@@ -314,7 +319,7 @@ public class LoadBalancer implements IFloodlightModule,
                         eth.getSourceMACAddress())
                 .setTargetProtocolAddress(
                         arpRequest.getSenderProtocolAddress()));
-                
+        		
         // push ARP reply out
         pushPacket(arpReply, sw, OFPacketOut.BUFFER_ID_NONE, OFPort.OFPP_NONE.getValue(),
                    pi.getInPort(), cntx, true);
@@ -878,14 +883,14 @@ public class LoadBalancer implements IFloodlightModule,
                                             OFMESSAGE_DAMPER_TIMEOUT);
         
         int id = HeimdallInfo.getInfo().myControllerId();
-        vips = new WorkloadLoggerTable<String, LBVip>(id, "LB-VIPS", RequestLogger.getRequestLogger());
+        vips = CachedKeyValueTable.<String,LBVip>startCache(new WorkloadLoggerTable<String, LBVip>(id, "LB-VIPS", RequestLogger.getRequestLogger()));
         pools = new WorkloadLoggerTable<String, LBPool>(id, "LB-POOLS" , RequestLogger.getRequestLogger()); 
-        members = new WorkloadLoggerTable<String, LBMember>(id, "LB-MEMBERS" , RequestLogger.getRequestLogger());
-        vipIpToId = WorkloadLoggerTable.<Integer,String>workloadLoggerDefaultCrossReference(id, "LB-VIP2ID", RequestLogger.getRequestLogger(),"LB-VIPS");
+        members = CachedKeyValueTable.<String, LBMember>startCache(new WorkloadLoggerTable<String, LBMember>(id, "LB-MEMBERS" , RequestLogger.getRequestLogger()));
+        vipIpToId = CachedKeyValueTable.<Integer,String>startCache(WorkloadLoggerTable.<Integer,String>workloadLoggerDefaultCrossReference(id, "LB-VIP2ID", RequestLogger.getRequestLogger(),"LB-VIPS"));
         vipIpToMac = new WorkloadLoggerTable<Integer, MACAddress>(id, "LB-VIP2MAC" , RequestLogger.getRequestLogger());
         memberIpToId = new WorkloadLoggerTable<Integer, String>(id,  "MIP2ID", RequestLogger.getRequestLogger()); 
     }
-
+    
     @Override
     public void startUp(FloodlightModuleContext context) {
         floodlightProvider.addOFMessageListener(OFType.PACKET_IN, this);
