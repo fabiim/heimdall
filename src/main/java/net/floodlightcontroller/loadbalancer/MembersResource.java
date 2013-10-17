@@ -110,31 +110,31 @@ public class MembersResource extends ServerResource {
             if (jp.getText().equals("")) 
                 continue;
             if (n.equals("id")) {
-                member.id = jp.getText();
+                member.setId(jp.getText());
                 continue;
             } else
             if (n.equals("address")) {
-                member.address = IPv4.toIPv4Address(jp.getText());
+                member.setAddress( IPv4.toIPv4Address(jp.getText()));
                 continue;
             } else
             if (n.equals("port")) {
-                member.port = Short.parseShort(jp.getText());
+                member.setPort(Short.parseShort(jp.getText()));
                 continue;
             } else
             if (n.equals("connection_limit")) {
-                member.connectionLimit = Integer.parseInt(jp.getText());
+                member.setConnectionLimit( Integer.parseInt(jp.getText()));
                 continue;
             } else
             if (n.equals("admin_state")) {
-                member.adminState = Short.parseShort(jp.getText());
+                member.setAdminState(Short.parseShort(jp.getText()));
                 continue;
             } else
             if (n.equals("status")) {
-                member.status = Short.parseShort(jp.getText());
+                member.setStatus(Short.parseShort(jp.getText()));
                 continue;
             } else
             if (n.equals("pool_id")) {
-                member.poolId = jp.getText();
+                member.setPoolId(jp.getText());
                 continue;
             } 
             

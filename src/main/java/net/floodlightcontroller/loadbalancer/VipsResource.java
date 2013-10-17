@@ -113,42 +113,42 @@ public class VipsResource extends ServerResource {
                 continue;
  
             if (n.equals("id")) {
-                vip.id = jp.getText();
+                vip.setId(jp.getText());
                 continue;
             } 
             if (n.equals("tenant_id")) {
-                vip.tenantId = jp.getText();
+                vip.setTenantId(jp.getText());
                 continue;
             } 
             if (n.equals("name")) {
-                vip.name = jp.getText();
+                vip.setName(jp.getText());
                 continue;
             }
             if (n.equals("network_id")) {
-                vip.netId = jp.getText();
+                vip.setNetId(jp.getText());
                 continue;
             }
             if (n.equals("protocol")) {
                 String tmp = jp.getText();
                 if (tmp.equalsIgnoreCase("TCP")) {
-                    vip.protocol = IPv4.PROTOCOL_TCP;
+                    vip.setProtocol(IPv4.PROTOCOL_TCP);
                 } else if (tmp.equalsIgnoreCase("UDP")) {
-                    vip.protocol = IPv4.PROTOCOL_UDP;
+                    vip.setProtocol(IPv4.PROTOCOL_UDP);
                 } else if (tmp.equalsIgnoreCase("ICMP")) {
-                    vip.protocol = IPv4.PROTOCOL_ICMP;
+                    vip.setProtocol(IPv4.PROTOCOL_ICMP);
                 } 
                 continue;
             }
             if (n.equals("address")) {
-                vip.address = IPv4.toIPv4Address(jp.getText());
+                vip.setAddress( IPv4.toIPv4Address(jp.getText()));
                 continue;
             }
             if (n.equals("port")) {
-                vip.port = Short.parseShort(jp.getText());
+                vip.setPort( Short.parseShort(jp.getText()));
                 continue;
             }
             if (n.equals("pool_id")) {
-                vip.pools.add(jp.getText());
+                vip.getPools().add(jp.getText());
                 continue;
             }
             

@@ -36,19 +36,147 @@ import com.google.common.collect.Lists;
 
 @JsonSerialize(using=LBVipSerializer.class)
 public class LBVip implements Serializable{
-    protected String id;    
-    protected String name;
-    protected String tenantId;
-    protected String netId;
-    protected int address;
-    protected byte protocol;
-    protected short lbMethod;
-    protected short port;
-    protected ArrayList<String> pools;
-    protected boolean sessionPersistence;
-    protected int connectionLimit;
-    protected short adminState;
-    protected short status;
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
+	public String getId() {
+		return id;
+	}
+
+	public void setId(String id) {
+		this.id = id;
+	}
+
+	public String getName() {
+		return name;
+	}
+
+	public void setName(String name) {
+		this.name = name;
+	}
+
+	public String getTenantId() {
+		return tenantId;
+	}
+
+	public void setTenantId(String tenantId) {
+		this.tenantId = tenantId;
+	}
+
+	public String getNetId() {
+		return netId;
+	}
+
+	public void setNetId(String netId) {
+		this.netId = netId;
+	}
+
+	public int getAddress() {
+		return address;
+	}
+
+	public void setAddress(int address) {
+		this.address = address;
+	}
+
+	public byte getProtocol() {
+		return protocol;
+	}
+
+	public void setProtocol(byte protocol) {
+		this.protocol = protocol;
+	}
+
+	public short getLbMethod() {
+		return lbMethod;
+	}
+
+	public void setLbMethod(short lbMethod) {
+		this.lbMethod = lbMethod;
+	}
+
+	public short getPort() {
+		return port;
+	}
+
+	public void setPort(short port) {
+		this.port = port;
+	}
+
+	public ArrayList<String> getPools() {
+		return pools;
+	}
+
+	public void setPools(ArrayList<String> pools) {
+		this.pools = pools;
+	}
+
+	public boolean isSessionPersistence() {
+		return sessionPersistence;
+	}
+
+	public void setSessionPersistence(boolean sessionPersistence) {
+		this.sessionPersistence = sessionPersistence;
+	}
+
+	public int getConnectionLimit() {
+		return connectionLimit;
+	}
+
+	public void setConnectionLimit(int connectionLimit) {
+		this.connectionLimit = connectionLimit;
+	}
+
+	public short getAdminState() {
+		return adminState;
+	}
+
+	public void setAdminState(short adminState) {
+		this.adminState = adminState;
+	}
+
+	public short getStatus() {
+		return status;
+	}
+
+	public void setStatus(short status) {
+		this.status = status;
+	}
+
+	public MACAddress getProxyMac() {
+		return proxyMac;
+	}
+
+	public void setProxyMac(MACAddress proxyMac) {
+		this.proxyMac = proxyMac;
+	}
+
+	public static String getLB_PROXY_MAC() {
+		return LB_PROXY_MAC;
+	}
+
+	public static void setLB_PROXY_MAC(String lB_PROXY_MAC) {
+		LB_PROXY_MAC = lB_PROXY_MAC;
+	}
+
+	public static long getSerialversionuid() {
+		return serialVersionUID;
+	}
+
+	private String id;    
+    private String name;
+    private String tenantId;
+    private String netId;
+    private int address;
+    private byte protocol;
+    private short lbMethod;
+    private short port;
+    private ArrayList<String> pools;
+    private boolean sessionPersistence;
+    private int connectionLimit;
+    private short adminState;
+    private short status;
     
     protected MACAddress proxyMac;
     
@@ -80,7 +208,8 @@ public class LBVip implements Serializable{
 		this.name = lbVip.name; 
 		this.tenantId = lbVip.tenantId; 
 		this.netId = lbVip.netId; 
-		this.address = lbVip.address; 
+		this.address = lbVip.address;
+		this.adminState = lbVip.adminState; 
 		this.protocol = lbVip.protocol; 
 		this.lbMethod = lbVip.lbMethod; 
 		this.port = lbVip.port; 

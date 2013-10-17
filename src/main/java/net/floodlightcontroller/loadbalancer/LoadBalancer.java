@@ -252,13 +252,14 @@ public class LoadBalancer implements IFloodlightModule,
                     boolean replaced = false; 
                     LBMember member;
                     String memberId; 
+
                     do{
                     	String id = vip.pickPool(client);
                     	VersionedValue<LBPool> pool = pools.getWithTimeStamp(id); // FIXME can be null. 
                     	memberId = pool.value().pickMember(client);
                     	replaced = pools.replace(id,pool.version(), pool.value());
                     }while(!replaced); 
-                    member = members.get(memberId, MEMBERS_ACCEPTED_STALENESS_MS);                    	
+                    member = members.getColumn(memberId,"getAddress",MEMBERS_ACCEPTED_STALENESS_MS);                    	
                     // for chosen member, check device manager and find and push routes, in both directions                    
                     pushBidirectionalVipRoutes(sw, pi, cntx, client, member, vip);
 
@@ -323,7 +324,7 @@ public class LoadBalancer implements IFloodlightModule,
         // push ARP reply out
         pushPacket(arpReply, sw, OFPacketOut.BUFFER_ID_NONE, OFPort.OFPP_NONE.getValue(),
                    pi.getInPort(), cntx, true);
-        log.debug("proxy ARP reply pushed as {}", IPv4.fromIPv4Address(vip.address));
+        log.debug("proxy ARP reply pushed as {}", IPv4.fromIPv4Address(vip.getAddress()));
         
         return;
     }
@@ -416,9 +417,9 @@ public class LoadBalancer implements IFloodlightModule,
             for (int j = 0; j < d.getIPv4Addresses().length; j++) {
                     if (srcDevice == null && client.ipAddress == d.getIPv4Addresses()[j])
                         srcDevice = d;
-                    if (dstDevice == null && member.address == d.getIPv4Addresses()[j]) {
+                    if (dstDevice == null && member.getAddress() == d.getIPv4Addresses()[j]) {
                         dstDevice = d;
-                        member.macString = dstDevice.getMACAddressString();
+                        member.setMacString(dstDevice.getMACAddressString());
                     }
                     if (srcDevice != null && dstDevice != null)
                         break;
@@ -563,7 +564,7 @@ public class LoadBalancer implements IFloodlightModule,
                fm.setPriority(Short.MAX_VALUE);
                
                if (inBound) {
-                   entryName = "inbound-vip-"+ member.vipId+"-client-"+client.ipAddress+"-port-"+client.targetPort
+                   entryName = "inbound-vip-"+ member.getVipId()+"-client-"+client.ipAddress+"-port-"+client.targetPort
                            +"-srcswitch-"+path.get(0).getNodeId()+"-sw-"+sw;
                    matchString = "nw_src="+IPv4.fromIPv4Address(client.ipAddress)+","
                                + "nw_proto="+String.valueOf(client.nw_proto)+","
@@ -572,15 +573,15 @@ public class LoadBalancer implements IFloodlightModule,
                                + "in_port="+String.valueOf(path.get(i).getPortId());
 
                    if (sw == pinSwitch) {
-                       actionString = "set-dst-ip="+IPv4.fromIPv4Address(member.address)+"," 
-                                + "set-dst-mac="+member.macString+","
+                       actionString = "set-dst-ip="+IPv4.fromIPv4Address(member.getAddress())+"," 
+                                + "set-dst-mac="+member.getMacString()+","
                                 + "output="+path.get(i+1).getPortId();
                    } else {
                        actionString =
                                "output="+path.get(i+1).getPortId();
                    }
                } else {
-                   entryName = "outbound-vip-"+ member.vipId+"-client-"+client.ipAddress+"-port-"+client.targetPort
+                   entryName = "outbound-vip-"+ member.getVipId()+"-client-"+client.ipAddress+"-port-"+client.targetPort
                            +"-srcswitch-"+path.get(0).getNodeId()+"-sw-"+sw;
                    matchString = "nw_dst="+IPv4.fromIPv4Address(client.ipAddress)+","
                                + "nw_proto="+String.valueOf(client.nw_proto)+","
@@ -589,7 +590,7 @@ public class LoadBalancer implements IFloodlightModule,
                                + "in_port="+String.valueOf(path.get(i).getPortId());
 
                    if (sw == pinSwitch) {
-                       actionString = "set-src-ip="+IPv4.fromIPv4Address(vipH.address)+","
+                       actionString = "set-src-ip="+IPv4.fromIPv4Address(vipH.getAddress())+","
                                + "set-src-mac="+vipH.proxyMac.toString()+","
                                + "output="+path.get(i+1).getPortId();
                    } else {
@@ -636,16 +637,16 @@ public class LoadBalancer implements IFloodlightModule,
         if (vip == null)
             vip = new LBVip();
         
-        vips.put(vip.id, vip);
-        vipIpToId.put(vip.address, vip.id);
-        vipIpToMac.put(vip.address, vip.proxyMac);
+        vips.put(vip.getId(), vip);
+        vipIpToId.put(vip.getAddress(), vip.getId());
+        vipIpToMac.put(vip.getAddress(), vip.proxyMac);
         
         return vip;
     }
 
     @Override
     public LBVip updateVip(LBVip vip) {
-        vips.insert(vip.id, vip);
+        vips.insert(vip.getId(), vip);
         return vip;
     }
 
@@ -677,27 +678,27 @@ public class LoadBalancer implements IFloodlightModule,
             pool = new LBPool();
         
         
-        if (pool.vipId != null && vips.containsKey(pool.vipId)){
+        if (pool.getVipId() != null && vips.containsKey(pool.getVipId())){
         	//boolean replaced = false; 
         	//do{
-        		LBVip lbVip = vips.get(pool.vipId);
+        		LBVip lbVip = vips.get(pool.getVipId());
         		//LBVip oldVip = new LBVip(lbVip); FIXME 
-        		lbVip.pools.add(pool.id);
-        		vips.put(pool.vipId,lbVip);
+        		lbVip.getPools().add(pool.getId());
+        		vips.put(pool.getVipId(),lbVip);
         		
         	//}while(!replaced);
         }
         else {
             log.error("specified vip-id must exist");
-            pool.vipId = null;
+            pool.setVipId(null);
         }
-        pools.insert(pool.id, pool);
+        pools.insert(pool.getId(), pool);
         return pool;
     }
 
     @Override
     public LBPool updatePool(LBPool pool) {
-        pools.put(pool.id, pool);	
+        pools.put(pool.getId(), pool);	
         return null;
     }
 
@@ -706,13 +707,13 @@ public class LoadBalancer implements IFloodlightModule,
         LBPool pool;
         if(pools!=null){
             pool = pools.get(poolId);
-            if (pool.vipId != null){
+            if (pool.getVipId() != null){
             	boolean replaced = false; 
             	do{
-            		LBVip vip = vips.get(pool.vipId);
+            		LBVip vip = vips.get(pool.getVipId());
             		LBVip oldVip = new LBVip(vip); 
-            		vip.pools.remove(poolId);
-            		replaced = vips.replace(pool.vipId, oldVip, vip); 
+            		vip.getPools().remove(poolId);
+            		replaced = vips.replace(pool.getVipId(), oldVip, vip); 
             	}while(!replaced); 
             	
             }
@@ -740,7 +741,7 @@ public class LoadBalancer implements IFloodlightModule,
         Collection<LBMember> result = new HashSet<LBMember>();
         
         if(pools.containsKey(poolId)) {
-            ArrayList<String> memberIds = pools.get(poolId).members;
+            ArrayList<String> memberIds = pools.get(poolId).getMembers();
             for (int i=0; i<memberIds.size(); i++)
                 result.add(members.get(memberIds.get(i)));
         }
@@ -754,29 +755,29 @@ public class LoadBalancer implements IFloodlightModule,
 
         
         
-        if (member.poolId != null && pools.get(member.poolId) != null) {
-            member.vipId = pools.get(member.poolId).vipId;
-            if (!pools.get(member.poolId).members.contains(member.id)){
+        if (member.getPoolId() != null && pools.get(member.getPoolId()) != null) {
+            member.setVipId(pools.get(member.getPoolId()).getVipId());
+            if (!pools.get(member.getPoolId()).getMembers().contains(member.getId())){
             	//boolean replaced = false;
             	//do{
-            		LBPool pol =  pools.get(member.poolId); 
+            		LBPool pol =  pools.get(member.getPoolId()); 
             		//LBPool oldPol = new LBPool(pol); 
-            		pol.members.add(member.id);
+            		pol.getMembers().add(member.getId());
             		//replaced = pools.replace(pol.id, oldPol, pol);
-            		pools.put(pol.id, pol); 
+            		pools.put(pol.getId(), pol); 
             	//}while (!replaced); 
             }
         } else
             log.error("member must be specified with non-null pool_id");
 
-        members.put(member.id, member);
-        memberIpToId.put(member.address, member.id);
+        members.put(member.getId(), member);
+        memberIpToId.put(member.getAddress(), member.getId());
         return member;
     }
 
     @Override
     public LBMember updateMember(LBMember member) {
-        members.put(member.id, member);
+        members.put(member.getId(), member);
         return member;
     }
 
@@ -786,13 +787,13 @@ public class LoadBalancer implements IFloodlightModule,
         member = members.get(memberId);
         
         if(member != null){
-            if (member.poolId != null){
+            if (member.getPoolId() != null){
             	boolean replaced = false; 
             	do {
-            		LBPool p = pools.get(member.poolId);
+            		LBPool p = pools.get(member.getPoolId());
             		LBPool oldPool = new LBPool(p);
-            		p.members.remove(memberId);
-            		replaced = pools.replace(p.id, oldPool, p);
+            		p.getMembers().remove(memberId);
+            		replaced = pools.replace(p.getId(), oldPool, p);
             	}while (!replaced); 
             }
             members.remove(memberId);

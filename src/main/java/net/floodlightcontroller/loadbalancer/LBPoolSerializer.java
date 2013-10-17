@@ -31,12 +31,12 @@ public class LBPoolSerializer extends JsonSerializer<LBPool>{
                                                   JsonProcessingException {
         jGen.writeStartObject();
         
-        jGen.writeStringField("name", pool.name);
-        jGen.writeStringField("id", pool.id);
-        jGen.writeStringField("vipId", pool.vipId);
+        jGen.writeStringField("name", pool.getName());
+        jGen.writeStringField("id", pool.getId());
+        jGen.writeStringField("vipId", pool.getVipId());
 
-        for (int i=0; i<pool.members.size(); i++)
-            jGen.writeStringField("pool", pool.members.get(i));
+        for (int i=0; i<pool.getMembers().size(); i++)
+            jGen.writeStringField("pool", pool.getMembers().get(i));
 
         jGen.writeEndObject();
     }

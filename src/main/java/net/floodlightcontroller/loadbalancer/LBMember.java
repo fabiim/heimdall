@@ -33,17 +33,93 @@ public class LBMember implements Serializable {
 	 * 
 	 */
 	private static final long serialVersionUID = 1L;
-	protected String id;
-    protected int address;
-    protected short port;
-    protected String macString;
+	private String id;
+    private int address;
+    private short port;
+    private String macString;
     
-    protected int connectionLimit;
-    protected short adminState;
-    protected short status;
+    private int connectionLimit;
+    private short adminState;
+    private short status;
 
-    protected String poolId;
-    protected String vipId;
+    public String getId() {
+		return id;
+	}
+
+	public void setId(String id) {
+		this.id = id;
+	}
+
+	public int getAddress() {
+		return address;
+	}
+
+	public void setAddress(int address) {
+		this.address = address;
+	}
+
+	public short getPort() {
+		return port;
+	}
+
+	public void setPort(short port) {
+		this.port = port;
+	}
+
+	public String getMacString() {
+		return macString;
+	}
+
+	public void setMacString(String macString) {
+		this.macString = macString;
+	}
+
+	public int getConnectionLimit() {
+		return connectionLimit;
+	}
+
+	public void setConnectionLimit(int connectionLimit) {
+		this.connectionLimit = connectionLimit;
+	}
+
+	public short getAdminState() {
+		return adminState;
+	}
+
+	public void setAdminState(short adminState) {
+		this.adminState = adminState;
+	}
+
+	public short getStatus() {
+		return status;
+	}
+
+	public void setStatus(short status) {
+		this.status = status;
+	}
+
+	public String getPoolId() {
+		return poolId;
+	}
+
+	public void setPoolId(String poolId) {
+		this.poolId = poolId;
+	}
+
+	public String getVipId() {
+		return vipId;
+	}
+
+	public void setVipId(String vipId) {
+		this.vipId = vipId;
+	}
+
+	public static long getSerialversionuid() {
+		return serialVersionUID;
+	}
+
+	private String poolId;
+    private String vipId;
     
     public LBMember() {
         id = String.valueOf((int) (Math.random()*10000));
