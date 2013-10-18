@@ -2,6 +2,7 @@ net.floodlightcontroller.core.module.ApplicationLoader
 net.floodlightcontroller.core.internal.FloodlightProvider
 net.floodlightcontroller.storage.memory.MemoryStorageSource
 net.floodlightcontroller.devicemanager.internal.DeviceManagerImpl
+net.floodlightcontroller.devicemanager.original.internal.DeviceManagerImpl
 net.floodlightcontroller.linkdiscovery.internal.LinkDiscoveryManager
 net.floodlightcontroller.topology.TopologyManager
 net.floodlightcontroller.forwarding.Forwarding
@@ -28,3 +29,5 @@ net.floodlightcontroller.loadbalancer.original.LoadBalancer
 org.sdnplatform.sync.internal.SyncManager
 org.sdnplatform.sync.internal.SyncTorture
 net.floodlightcontroller.devicemanager.internal.DefaultEntityClassifier
+net.floodlightcontroller.devicemanager.original.internal.DefaultEntityClassifier
+
