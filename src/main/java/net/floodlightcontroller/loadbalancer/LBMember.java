@@ -18,6 +18,9 @@ package net.floodlightcontroller.loadbalancer;
 
 import java.io.Serializable;
 
+import smartkv.client.tables.Column;
+import smartkv.client.util.Serializer.SerialNum;
+
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 
 /**
@@ -42,6 +45,7 @@ public class LBMember implements Serializable {
     private short adminState;
     private short status;
 
+    @Column
     public String getId() {
 		return id;
 	}
@@ -50,6 +54,7 @@ public class LBMember implements Serializable {
 		this.id = id;
 	}
 
+	@Column(serializer=SerialNum.INT)
 	public int getAddress() {
 		return address;
 	}
@@ -57,7 +62,8 @@ public class LBMember implements Serializable {
 	public void setAddress(int address) {
 		this.address = address;
 	}
-
+	
+	@Column
 	public short getPort() {
 		return port;
 	}
@@ -66,6 +72,7 @@ public class LBMember implements Serializable {
 		this.port = port;
 	}
 
+	@Column
 	public String getMacString() {
 		return macString;
 	}
@@ -74,6 +81,7 @@ public class LBMember implements Serializable {
 		this.macString = macString;
 	}
 
+	@Column
 	public int getConnectionLimit() {
 		return connectionLimit;
 	}
@@ -82,6 +90,7 @@ public class LBMember implements Serializable {
 		this.connectionLimit = connectionLimit;
 	}
 
+	@Column
 	public short getAdminState() {
 		return adminState;
 	}
@@ -90,6 +99,7 @@ public class LBMember implements Serializable {
 		this.adminState = adminState;
 	}
 
+	@Column
 	public short getStatus() {
 		return status;
 	}
@@ -98,6 +108,7 @@ public class LBMember implements Serializable {
 		this.status = status;
 	}
 
+	@Column
 	public String getPoolId() {
 		return poolId;
 	}
@@ -106,6 +117,7 @@ public class LBMember implements Serializable {
 		this.poolId = poolId;
 	}
 
+	@Column
 	public String getVipId() {
 		return vipId;
 	}
@@ -116,6 +128,14 @@ public class LBMember implements Serializable {
 
 	public static long getSerialversionuid() {
 		return serialVersionUID;
+	}
+
+	@Override
+	public String toString() {
+		return "LBMember [id=" + id + ", address=" + address + ", port=" + port
+				+ ", macString=" + macString + ", connectionLimit="
+				+ connectionLimit + ", adminState=" + adminState + ", status="
+				+ status + ", poolId=" + poolId + ", vipId=" + vipId + "]";
 	}
 
 	private String poolId;

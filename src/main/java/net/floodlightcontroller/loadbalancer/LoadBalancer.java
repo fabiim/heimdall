@@ -82,16 +82,27 @@ import org.openflow.protocol.action.OFActionVirtualLanIdentifier;
 import org.openflow.protocol.action.OFActionVirtualLanPriorityCodePoint;
 import org.openflow.util.HexString;
 import org.openflow.util.U16;
+import org.python.google.common.collect.Maps;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import smartkv.client.tables.AnnotatedColumnObject;
+import smartkv.client.tables.CachedColumnTable;
 import smartkv.client.tables.CachedKeyValueTable;
+import smartkv.client.tables.ColumnObject;
+import smartkv.client.tables.ICachedKeyValueColumnTable;
 import smartkv.client.tables.ICachedKeyValueTable;
+import smartkv.client.tables.IColumnTable;
 import smartkv.client.tables.IKeyValueTable;
+import smartkv.client.tables.TableBuilder;
 import smartkv.client.tables.VersionedValue;
+import smartkv.client.util.Serializer;
 import smartkv.client.workloads.ActivityEvent;
+import smartkv.client.workloads.ColumnWorkloadLogger;
 import smartkv.client.workloads.RequestLogger;
 import smartkv.client.workloads.WorkloadLoggerTable;
+
+import com.google.common.collect.Sets;
 
 /**
  * A simple load balancer module for ping, tcp, and udp flows. This module is accessed 
@@ -124,9 +135,9 @@ class IPClient implements Serializable{
 
 public class LoadBalancer implements IFloodlightModule,
     ILoadBalancerService, IOFMessageListener {
-
-	private static final long VIPS_ACCEPTED_STALENESS_MS = 200;
-	private static final long MEMBERS_ACCEPTED_STALENESS_MS = 200;
+	
+	private static final long VIPS_ACCEPTED_STALENESS_MS = 2000;
+	private static final long MEMBERS_ACCEPTED_STALENESS_MS = 2000;
 
 	protected static Logger log = LoggerFactory.getLogger(LoadBalancer.class);
 
@@ -141,9 +152,9 @@ public class LoadBalancer implements IFloodlightModule,
     protected ITopologyService topology;
     protected IStaticFlowEntryPusherService sfp;
     
-    protected ICachedKeyValueTable<String, LBVip> vips;
+    protected IColumnTable<String, LBVip> vips;
     protected IKeyValueTable<String, LBPool> pools;
-    protected ICachedKeyValueTable<String, LBMember> members;
+    protected ICachedKeyValueColumnTable<String, LBMember> members;
     protected ICachedKeyValueTable<Integer, String> vipIpToId;
     protected IKeyValueTable<Integer, MACAddress> vipIpToMac;
     protected IKeyValueTable<Integer, String> memberIpToId;
@@ -213,10 +224,10 @@ public class LoadBalancer implements IFloodlightModule,
             if (pkt instanceof ARP) {
                 // retrieve arp to determine target IP address                                                       
                 ARP arpRequest = (ARP) eth.getPayload();
-
                 int targetProtocolAddress = IPv4.toIPv4Address(arpRequest
                                                                .getTargetProtocolAddress());
-                LBVip vip = vipIpToId.getValueByReference(targetProtocolAddress, LoadBalancer.VIPS_ACCEPTED_STALENESS_MS);
+                VersionedValue<Object>  v = vipIpToId.getColumnsByReference(targetProtocolAddress, Sets.newHashSet("getAddress", "getProxyMac", "getPools"), LoadBalancer.VIPS_ACCEPTED_STALENESS_MS);
+                LBVip vip =  (v != null ? (LBVip) v.value() : null); 
                 if (vip != null) {
                     vipProxyArpReply(sw, pi, cntx, vip);
                     RequestLogger.getRequestLogger().endActivity(event);
@@ -227,10 +238,12 @@ public class LoadBalancer implements IFloodlightModule,
             // currently only load balance IPv4 packets - no-op for other traffic 
             if (pkt instanceof IPv4) {
                 IPv4 ip_pkt = (IPv4) pkt;
-                
                 // If match Vip and port, check pool and choose member
                 int destIpAddress = ip_pkt.getDestinationAddress();
-                LBVip vip = vipIpToId.getValueByReference(destIpAddress, LoadBalancer.VIPS_ACCEPTED_STALENESS_MS); 
+                System.out.println("Requesting columns for : " +   Arrays.toString(Serializer.INT.serialize(destIpAddress)));
+                VersionedValue<Object> vipEncapsulated = vipIpToId.getColumnsByReference(destIpAddress,Sets.newHashSet("getAddress","getProxyMac","getPools") , LoadBalancer.VIPS_ACCEPTED_STALENESS_MS);
+                System.out.println(vipEncapsulated);
+                LBVip vip = vipEncapsulated != null ? (LBVip) vipEncapsulated.value() : null;
                 if (vip != null){
                     IPClient client = new IPClient();
                     client.ipAddress = ip_pkt.getSourceAddress();
@@ -259,7 +272,11 @@ public class LoadBalancer implements IFloodlightModule,
                     	memberId = pool.value().pickMember(client);
                     	replaced = pools.replace(id,pool.version(), pool.value());
                     }while(!replaced); 
-                    member = members.getColumn(memberId,"getAddress",MEMBERS_ACCEPTED_STALENESS_MS);                    	
+                    
+                    Integer address = members.getColumn(memberId,"getAddress",MEMBERS_ACCEPTED_STALENESS_MS);
+                    member = new LBMember(); 
+                    member.setId(vip.getId());
+                    member.setAddress(address);
                     // for chosen member, check device manager and find and push routes, in both directions                    
                     pushBidirectionalVipRoutes(sw, pi, cntx, client, member, vip);
 
@@ -868,7 +885,8 @@ public class LoadBalancer implements IFloodlightModule,
         return l;
     }
 
-    @Override
+    @SuppressWarnings("unchecked")
+	@Override
     public void init(FloodlightModuleContext context)
                                                  throws FloodlightModuleException {
         floodlightProvider = context.getServiceImpl(IFloodlightProviderService.class);
@@ -884,10 +902,32 @@ public class LoadBalancer implements IFloodlightModule,
                                             OFMESSAGE_DAMPER_TIMEOUT);
         
         int id = HeimdallInfo.getInfo().myControllerId();
-        vips = CachedKeyValueTable.<String,LBVip>startCache(new WorkloadLoggerTable<String, LBVip>(id, "LB-VIPS", RequestLogger.getRequestLogger()));
+        
+        Map<String,Serializer> m = Maps.newHashMap(); m.put("getProxyMac",  MACAddress.SERIALIZER);
+        AnnotatedColumnObject column =  AnnotatedColumnObject.newAnnotatedColumnObject(LBVip.class, m); 
+        vips = 	ColumnWorkloadLogger.withSingletonLogger(
+        			new TableBuilder<String,LBVip>().
+        			setCid(id).
+        			setTableName("LB-VIPS").
+        			setKeySerializer(Serializer.STRING).
+        			setColumnSerializer(LBVip.class));
+        			
         pools = new WorkloadLoggerTable<String, LBPool>(id, "LB-POOLS" , RequestLogger.getRequestLogger()); 
-        members = CachedKeyValueTable.<String, LBMember>startCache(new WorkloadLoggerTable<String, LBMember>(id, "LB-MEMBERS" , RequestLogger.getRequestLogger()));
-        vipIpToId = CachedKeyValueTable.<Integer,String>startCache(WorkloadLoggerTable.<Integer,String>workloadLoggerDefaultCrossReference(id, "LB-VIP2ID", RequestLogger.getRequestLogger(),"LB-VIPS"));
+        members = CachedColumnTable.<String, LBMember>startCache(
+        		ColumnWorkloadLogger.withSingletonLogger(new TableBuilder<String,LBMember>().setTableName("LB-MEMBERS").setCid(id).setColumnSerializer(LBMember.class)));
+        
+        
+        vipIpToId = CachedKeyValueTable.<Integer,String>startCache(
+        		WorkloadLoggerTable.<Integer,String>withSingletonLogger(
+        				new TableBuilder<Integer,String>() 
+        				.setCid(id).
+        				setTableName("LB-VIP2ID")
+        				.setCrossReferenceColumnSerializer(column)
+        				.setCrossReferenceTable("LB-VIPS")
+        				.setValueSerializer(Serializer.STRING)
+        				.setKeySerializer(Serializer.INT)
+        				)); 
+        //WorkloadLoggerTable.<Integer,String>workloadLoggerDefaultCrossReference(id, "LB-VIP2ID", RequestLogger.getRequestLogger(),"LB-VIPS"));
         vipIpToMac = new WorkloadLoggerTable<Integer, MACAddress>(id, "LB-VIP2MAC" , RequestLogger.getRequestLogger());
         memberIpToId = new WorkloadLoggerTable<Integer, String>(id,  "MIP2ID", RequestLogger.getRequestLogger()); 
     }

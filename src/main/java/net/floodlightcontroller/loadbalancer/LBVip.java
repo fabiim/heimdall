@@ -18,11 +18,15 @@ package net.floodlightcontroller.loadbalancer;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Set;
+
+import org.python.google.common.collect.Sets;
+import org.python.google.common.primitives.Bytes;
 
 import net.floodlightcontroller.util.MACAddress;
-
-
-
+import smartkv.client.tables.Column;
+import smartkv.client.util.Serializer;
+import smartkv.client.util.Serializer.SerialNum;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.common.collect.Lists;
@@ -36,10 +40,13 @@ import com.google.common.collect.Lists;
 
 @JsonSerialize(using=LBVipSerializer.class)
 public class LBVip implements Serializable{
-    /**
+	
+	/**
 	 * 
 	 */
 	private static final long serialVersionUID = 1L;
+	
+	@Column (serializer=SerialNum.STRING)
 	public String getId() {
 		return id;
 	}
@@ -48,6 +55,7 @@ public class LBVip implements Serializable{
 		this.id = id;
 	}
 
+	@Column(serializer=SerialNum.STRING)
 	public String getName() {
 		return name;
 	}
@@ -56,6 +64,7 @@ public class LBVip implements Serializable{
 		this.name = name;
 	}
 
+	@Column(serializer=SerialNum.STRING)
 	public String getTenantId() {
 		return tenantId;
 	}
@@ -64,6 +73,7 @@ public class LBVip implements Serializable{
 		this.tenantId = tenantId;
 	}
 
+	@Column(serializer=SerialNum.STRING)
 	public String getNetId() {
 		return netId;
 	}
@@ -71,7 +81,8 @@ public class LBVip implements Serializable{
 	public void setNetId(String netId) {
 		this.netId = netId;
 	}
-
+	
+	@Column(serializer=SerialNum.INT)
 	public int getAddress() {
 		return address;
 	}
@@ -80,14 +91,17 @@ public class LBVip implements Serializable{
 		this.address = address;
 	}
 
+	@Column
 	public byte getProtocol() {
 		return protocol;
 	}
 
+	
 	public void setProtocol(byte protocol) {
 		this.protocol = protocol;
 	}
 
+	@Column(serializer=SerialNum.SHORT)
 	public short getLbMethod() {
 		return lbMethod;
 	}
@@ -96,14 +110,16 @@ public class LBVip implements Serializable{
 		this.lbMethod = lbMethod;
 	}
 
+	@Column(serializer=SerialNum.SHORT)
 	public short getPort() {
 		return port;
 	}
-
+	
 	public void setPort(short port) {
 		this.port = port;
 	}
 
+	@Column
 	public ArrayList<String> getPools() {
 		return pools;
 	}
@@ -119,7 +135,8 @@ public class LBVip implements Serializable{
 	public void setSessionPersistence(boolean sessionPersistence) {
 		this.sessionPersistence = sessionPersistence;
 	}
-
+	
+	@Column
 	public int getConnectionLimit() {
 		return connectionLimit;
 	}
@@ -128,6 +145,7 @@ public class LBVip implements Serializable{
 		this.connectionLimit = connectionLimit;
 	}
 
+	@Column
 	public short getAdminState() {
 		return adminState;
 	}
@@ -136,6 +154,7 @@ public class LBVip implements Serializable{
 		this.adminState = adminState;
 	}
 
+	@Column
 	public short getStatus() {
 		return status;
 	}
@@ -144,6 +163,7 @@ public class LBVip implements Serializable{
 		this.status = status;
 	}
 
+	@Column 
 	public MACAddress getProxyMac() {
 		return proxyMac;
 	}

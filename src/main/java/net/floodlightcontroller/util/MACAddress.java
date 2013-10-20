@@ -19,6 +19,8 @@ package net.floodlightcontroller.util;
 import java.io.Serializable;
 import java.util.Arrays;
 
+import smartkv.client.util.Serializer;
+
 /**
  * The class representing MAC address.
  *
@@ -30,6 +32,19 @@ public class MACAddress implements Serializable {
 	 */
 	private static final long serialVersionUID = 1L;
 	public static final int MAC_ADDRESS_LENGTH = 6;
+	public static final Serializer<MACAddress> SERIALIZER = new Serializer<MACAddress> (){
+
+		@Override
+		public byte[] serialize(MACAddress obj) {
+			return obj.address; 
+		}
+
+		@Override
+		public MACAddress deserialize(byte[] bytes) {
+			return new MACAddress(bytes); 
+		}
+		
+	};
     private byte[] address = new byte[MAC_ADDRESS_LENGTH];
 
     public MACAddress(byte[] address) {
