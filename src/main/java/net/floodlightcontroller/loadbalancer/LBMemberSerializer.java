@@ -31,11 +31,11 @@ public class LBMemberSerializer extends JsonSerializer<LBMember>{
                                                   JsonProcessingException {
         jGen.writeStartObject();
         
-        jGen.writeStringField("id", member.id);
-        jGen.writeStringField("address", String.valueOf(member.address));
-        jGen.writeStringField("port", Short.toString(member.port));
-        jGen.writeStringField("poolId", member.poolId);
-        jGen.writeStringField("vipId", member.vipId);
+        jGen.writeStringField("id", member.getId());
+        jGen.writeStringField("address", String.valueOf(member.getAddress()));
+        jGen.writeStringField("port", Short.toString(member.getPort()));
+        jGen.writeStringField("poolId", member.getPoolId());
+        jGen.writeStringField("vipId", member.getVipId());
 
         jGen.writeEndObject();
     }

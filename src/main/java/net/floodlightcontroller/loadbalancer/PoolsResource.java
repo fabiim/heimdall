@@ -112,38 +112,38 @@ public class PoolsResource extends ServerResource {
             if (jp.getText().equals("")) 
                 continue;
             if (n.equals("id")) {
-                pool.id = jp.getText();
+                pool.setId(jp.getText());
                 continue;
             } 
             if (n.equals("tenant_id")) {
-                pool.tenantId = jp.getText();
+                pool.setTenantId(jp.getText());
                 continue;
             } 
             if (n.equals("name")) {
-                pool.name = jp.getText();
+                pool.setName(jp.getText());
                 continue;
             }
             if (n.equals("network_id")) {
-                pool.netId = jp.getText();
+                pool.setNetId(jp.getText());
                 continue;
             }
             if (n.equals("lb_method")) {
-                pool.lbMethod = Short.parseShort(jp.getText());
+                pool.setLbMethod(Short.parseShort(jp.getText()));
                 continue;
             }
             if (n.equals("protocol")) {
                 String tmp = jp.getText();
                 if (tmp.equalsIgnoreCase("TCP")) {
-                    pool.protocol = IPv4.PROTOCOL_TCP;
+                    pool.setProtocol(IPv4.PROTOCOL_TCP);
                 } else if (tmp.equalsIgnoreCase("UDP")) {
-                    pool.protocol = IPv4.PROTOCOL_UDP;
+                    pool.setProtocol(IPv4.PROTOCOL_UDP);
                 } else if (tmp.equalsIgnoreCase("ICMP")) {
-                    pool.protocol = IPv4.PROTOCOL_ICMP;
+                    pool.setProtocol (IPv4.PROTOCOL_ICMP);
                 } 
                 continue;
             }                    
             if (n.equals("vip_id")) {
-                pool.vipId = jp.getText();
+                pool.setVipId(jp.getText());
                 continue;
             } 
             

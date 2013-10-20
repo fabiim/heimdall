@@ -36,18 +36,18 @@ public class LBPool implements Serializable{
 	 * 
 	 */
 	private static final long serialVersionUID = 1L;
-	protected String id;
-    protected String name;
-    protected String tenantId;
-    protected String netId;
-    protected short lbMethod;
-    protected byte protocol;
-    ArrayList<String> members;
+	private String id;
+    private String name;
+    private String tenantId;
+    private String netId;
+    private short lbMethod;
+    private byte protocol;
+    private ArrayList<String> members;
     private ArrayList<String> monitors;
-    protected short adminState;
-    protected short status;
+    private short adminState;
+    private short status;
     
-    protected String vipId;
+    private String vipId;
     
     private int previousMemberIndex;
     
@@ -65,7 +65,107 @@ public class LBPool implements Serializable{
         previousMemberIndex = -1;
     }
     
-    public LBPool(LBPool pool) {
+    public String getId() {
+		return id;
+	}
+
+	public void setId(String id) {
+		this.id = id;
+	}
+
+	public String getName() {
+		return name;
+	}
+
+	public void setName(String name) {
+		this.name = name;
+	}
+
+	public String getTenantId() {
+		return tenantId;
+	}
+
+	public void setTenantId(String tenantId) {
+		this.tenantId = tenantId;
+	}
+
+	public String getNetId() {
+		return netId;
+	}
+
+	public void setNetId(String netId) {
+		this.netId = netId;
+	}
+
+	public short getLbMethod() {
+		return lbMethod;
+	}
+
+	public void setLbMethod(short lbMethod) {
+		this.lbMethod = lbMethod;
+	}
+
+	public byte getProtocol() {
+		return protocol;
+	}
+
+	public void setProtocol(byte protocol) {
+		this.protocol = protocol;
+	}
+
+	public ArrayList<String> getMembers() {
+		return members;
+	}
+
+	public void setMembers(ArrayList<String> members) {
+		this.members = members;
+	}
+
+	public ArrayList<String> getMonitors() {
+		return monitors;
+	}
+
+	public void setMonitors(ArrayList<String> monitors) {
+		this.monitors = monitors;
+	}
+
+	public short getAdminState() {
+		return adminState;
+	}
+
+	public void setAdminState(short adminState) {
+		this.adminState = adminState;
+	}
+
+	public short getStatus() {
+		return status;
+	}
+
+	public void setStatus(short status) {
+		this.status = status;
+	}
+
+	public String getVipId() {
+		return vipId;
+	}
+
+	public void setVipId(String vipId) {
+		this.vipId = vipId;
+	}
+
+	public int getPreviousMemberIndex() {
+		return previousMemberIndex;
+	}
+
+	public void setPreviousMemberIndex(int previousMemberIndex) {
+		this.previousMemberIndex = previousMemberIndex;
+	}
+
+	public static long getSerialversionuid() {
+		return serialVersionUID;
+	}
+
+	public LBPool(LBPool pool) {
     	this.id = pool.id; 
     	this.name = pool.name; 
     	this.tenantId = pool.tenantId; 
@@ -86,7 +186,7 @@ public class LBPool implements Serializable{
     	this.vipId = pool.vipId; 
     }
     
-    public String pickMember(IPClient client) {
+    public String pickMember() {
         // simple round robin for now; add different lbmethod later
         if (members.size() > 0) {
             previousMemberIndex = (previousMemberIndex + 1) % members.size();

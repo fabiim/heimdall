@@ -18,6 +18,9 @@ package net.floodlightcontroller.loadbalancer;
 
 import java.io.Serializable;
 
+import smartkv.client.tables.Column;
+import smartkv.client.util.Serializer.SerialNum;
+
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 
 /**
@@ -33,17 +36,110 @@ public class LBMember implements Serializable {
 	 * 
 	 */
 	private static final long serialVersionUID = 1L;
-	protected String id;
-    protected int address;
-    protected short port;
-    protected String macString;
+	private String id;
+    private int address;
+    private short port;
+    private String macString;
     
-    protected int connectionLimit;
-    protected short adminState;
-    protected short status;
+    private int connectionLimit;
+    private short adminState;
+    private short status;
 
-    protected String poolId;
-    protected String vipId;
+    @Column
+    public String getId() {
+		return id;
+	}
+
+	public void setId(String id) {
+		this.id = id;
+	}
+
+	@Column(serializer=SerialNum.INT)
+	public int getAddress() {
+		return address;
+	}
+
+	public void setAddress(int address) {
+		this.address = address;
+	}
+	
+	@Column
+	public short getPort() {
+		return port;
+	}
+
+	public void setPort(short port) {
+		this.port = port;
+	}
+
+	@Column
+	public String getMacString() {
+		return macString;
+	}
+
+	public void setMacString(String macString) {
+		this.macString = macString;
+	}
+
+	@Column
+	public int getConnectionLimit() {
+		return connectionLimit;
+	}
+
+	public void setConnectionLimit(int connectionLimit) {
+		this.connectionLimit = connectionLimit;
+	}
+
+	@Column
+	public short getAdminState() {
+		return adminState;
+	}
+
+	public void setAdminState(short adminState) {
+		this.adminState = adminState;
+	}
+
+	@Column
+	public short getStatus() {
+		return status;
+	}
+
+	public void setStatus(short status) {
+		this.status = status;
+	}
+
+	@Column
+	public String getPoolId() {
+		return poolId;
+	}
+
+	public void setPoolId(String poolId) {
+		this.poolId = poolId;
+	}
+
+	@Column
+	public String getVipId() {
+		return vipId;
+	}
+
+	public void setVipId(String vipId) {
+		this.vipId = vipId;
+	}
+
+	public static long getSerialversionuid() {
+		return serialVersionUID;
+	}
+
+	@Override
+	public String toString() {
+		return "LBMember [id=" + id + ", address=" + address + ", port=" + port
+				+ ", macString=" + macString + ", connectionLimit="
+				+ connectionLimit + ", adminState=" + adminState + ", status="
+				+ status + ", poolId=" + poolId + ", vipId=" + vipId + "]";
+	}
+
+	private String poolId;
+    private String vipId;
     
     public LBMember() {
         id = String.valueOf((int) (Math.random()*10000));

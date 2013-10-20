@@ -30,11 +30,11 @@ public class LBVipSerializer extends JsonSerializer<LBVip>{
                                                   JsonProcessingException {
         jGen.writeStartObject();
         
-        jGen.writeStringField("name", vip.name);
-        jGen.writeStringField("id", vip.id);
-        jGen.writeStringField("address", String.valueOf(vip.address));
-        jGen.writeStringField("protocol", Byte.toString(vip.protocol));
-        jGen.writeStringField("port", Short.toString(vip.port));
+        jGen.writeStringField("name", vip.getName());
+        jGen.writeStringField("id", vip.getId());
+        jGen.writeStringField("address", String.valueOf(vip.getAddress()));
+        jGen.writeStringField("protocol", Byte.toString(vip.getProtocol()));
+        jGen.writeStringField("port", Short.toString(vip.getPort()));
 
         jGen.writeEndObject();
     }

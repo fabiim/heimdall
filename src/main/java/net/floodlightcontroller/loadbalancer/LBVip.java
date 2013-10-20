@@ -20,9 +20,8 @@ import java.io.Serializable;
 import java.util.ArrayList;
 
 import net.floodlightcontroller.util.MACAddress;
-
-
-
+import smartkv.client.tables.Column;
+import smartkv.client.util.Serializer.SerialNum;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.common.collect.Lists;
@@ -36,19 +35,163 @@ import com.google.common.collect.Lists;
 
 @JsonSerialize(using=LBVipSerializer.class)
 public class LBVip implements Serializable{
-    protected String id;    
-    protected String name;
-    protected String tenantId;
-    protected String netId;
-    protected int address;
-    protected byte protocol;
-    protected short lbMethod;
-    protected short port;
-    protected ArrayList<String> pools;
-    protected boolean sessionPersistence;
-    protected int connectionLimit;
-    protected short adminState;
-    protected short status;
+	
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
+	
+	@Column (serializer=SerialNum.STRING)
+	public String getId() {
+		return id;
+	}
+
+	public void setId(String id) {
+		this.id = id;
+	}
+
+	@Column(serializer=SerialNum.STRING)
+	public String getName() {
+		return name;
+	}
+
+	public void setName(String name) {
+		this.name = name;
+	}
+
+	@Column(serializer=SerialNum.STRING)
+	public String getTenantId() {
+		return tenantId;
+	}
+
+	public void setTenantId(String tenantId) {
+		this.tenantId = tenantId;
+	}
+
+	@Column(serializer=SerialNum.STRING)
+	public String getNetId() {
+		return netId;
+	}
+
+	public void setNetId(String netId) {
+		this.netId = netId;
+	}
+	
+	@Column(serializer=SerialNum.INT)
+	public int getAddress() {
+		return address;
+	}
+
+	public void setAddress(int address) {
+		this.address = address;
+	}
+
+	@Column
+	public byte getProtocol() {
+		return protocol;
+	}
+
+	
+	public void setProtocol(byte protocol) {
+		this.protocol = protocol;
+	}
+
+	@Column(serializer=SerialNum.SHORT)
+	public short getLbMethod() {
+		return lbMethod;
+	}
+
+	public void setLbMethod(short lbMethod) {
+		this.lbMethod = lbMethod;
+	}
+
+	@Column(serializer=SerialNum.SHORT)
+	public short getPort() {
+		return port;
+	}
+	
+	public void setPort(short port) {
+		this.port = port;
+	}
+
+	@Column
+	public ArrayList<String> getPools() {
+		return pools;
+	}
+
+	public void setPools(ArrayList<String> pools) {
+		this.pools = pools;
+	}
+
+	public boolean isSessionPersistence() {
+		return sessionPersistence;
+	}
+
+	public void setSessionPersistence(boolean sessionPersistence) {
+		this.sessionPersistence = sessionPersistence;
+	}
+	
+	@Column
+	public int getConnectionLimit() {
+		return connectionLimit;
+	}
+
+	public void setConnectionLimit(int connectionLimit) {
+		this.connectionLimit = connectionLimit;
+	}
+
+	@Column
+	public short getAdminState() {
+		return adminState;
+	}
+
+	public void setAdminState(short adminState) {
+		this.adminState = adminState;
+	}
+
+	@Column
+	public short getStatus() {
+		return status;
+	}
+
+	public void setStatus(short status) {
+		this.status = status;
+	}
+
+	@Column 
+	public MACAddress getProxyMac() {
+		return proxyMac;
+	}
+
+	public void setProxyMac(MACAddress proxyMac) {
+		this.proxyMac = proxyMac;
+	}
+
+	public static String getLB_PROXY_MAC() {
+		return LB_PROXY_MAC;
+	}
+
+	public static void setLB_PROXY_MAC(String lB_PROXY_MAC) {
+		LB_PROXY_MAC = lB_PROXY_MAC;
+	}
+
+	public static long getSerialversionuid() {
+		return serialVersionUID;
+	}
+
+	private String id;    
+    private String name;
+    private String tenantId;
+    private String netId;
+    private int address;
+    private byte protocol;
+    private short lbMethod;
+    private short port;
+    private ArrayList<String> pools;
+    private boolean sessionPersistence;
+    private int connectionLimit;
+    private short adminState;
+    private short status;
     
     protected MACAddress proxyMac;
     
@@ -80,7 +223,8 @@ public class LBVip implements Serializable{
 		this.name = lbVip.name; 
 		this.tenantId = lbVip.tenantId; 
 		this.netId = lbVip.netId; 
-		this.address = lbVip.address; 
+		this.address = lbVip.address;
+		this.adminState = lbVip.adminState; 
 		this.protocol = lbVip.protocol; 
 		this.lbMethod = lbVip.lbMethod; 
 		this.port = lbVip.port; 
