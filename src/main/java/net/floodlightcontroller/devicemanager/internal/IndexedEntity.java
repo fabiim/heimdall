@@ -16,26 +16,168 @@
 
 package net.floodlightcontroller.devicemanager.internal;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+import java.util.Date;
 import java.util.EnumSet;
+import java.util.Iterator;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import smartkv.client.util.Serializer;
 import net.floodlightcontroller.devicemanager.IDeviceService;
 import net.floodlightcontroller.devicemanager.IDeviceService.DeviceField;
 
+public class IndexedEntity implements Serializable {
+	public static Serializer<IndexedEntity> SERIALIZER   = new  Serializer<IndexedEntity>(){
+		
 
-/**
- * This is a thin wrapper around {@link Entity} that allows overriding
- * the behavior of {@link Object#hashCode()} and {@link Object#equals(Object)}
- * so that the keying behavior in a hash map can be changed dynamically
- * @author readams
- */
-public class IndexedEntity {
-    protected EnumSet<DeviceField> keyFields;
+		/* (non-Javadoc)
+		 * @see bonafide.datastore.util.Serializer#serialize(java.lang.Object)
+		 */
+		@Override
+		public byte[] serialize(IndexedEntity c) {
+			try {
+		        ByteArrayOutputStream b = new ByteArrayOutputStream();
+		        ObjectOutputStream out = new ObjectOutputStream(b);
+		
+				out.writeObject(c.getKeyFields());
+				for (DeviceField f : c.getKeyFields()){
+					
+					switch(f){
+					case IPV4:
+						out.writeObject(c.getEntity().getIpv4Address());
+						break;
+					case MAC:
+						out.writeObject(new Long(c.getEntity().getMacAddress()));
+						break;
+					case PORT:
+						out.writeObject(c.getEntity().getSwitchPort());
+						break;
+					case SWITCH:
+						out.writeObject(c.getEntity().getSwitchDPID());
+						break;
+					case VLAN:
+						out.writeObject(c.getEntity().getVlan());
+						break;
+					}
+					
+				}
+				out.flush(); 
+				out.close();
+				return b.toByteArray(); 
+				
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			return null; 
+	}
+
+
+		/* (non-Javadoc)
+		 * @see bonafide.datastore.util.Serializer#deserialize(byte[])
+		 */
+		@Override
+		public IndexedEntity deserialize(byte[] c) {
+			try {
+		        ByteArrayInputStream b = new ByteArrayInputStream(c);
+		        ObjectInputStream o = new ObjectInputStream(b);
+				EnumSet<DeviceField> fields = (EnumSet<DeviceField>) o.readObject();
+				IndexedEntity ie = new IndexedEntity();
+				ie.setKeyFields(fields);
+				Long macAddress=null;  
+				Short vlan =null;
+		        Integer ipv4Address=null; 
+				Long switchDPID = null; 
+				Integer switchPort = null; 
+		        Date lastSeenTimestamp =null;
+				for (DeviceField f: fields){
+					switch(f){
+					case IPV4:
+						ipv4Address = (Integer) o.readObject(); 
+						break;
+					case MAC:
+						macAddress = (Long) o.readObject(); 
+						break;
+					case PORT:
+						switchPort = (Integer) o.readObject(); 
+						break;
+					case SWITCH:
+						switchDPID = (Long) o.readObject(); 
+						break;
+					case VLAN:
+						vlan = (Short) o.readObject(); 
+						break;
+					
+					}
+				}
+				Entity e = new Entity(macAddress, vlan, ipv4Address, switchDPID, switchPort, lastSeenTimestamp);
+				ie.setEntity(e);
+				return ie; 
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (ClassNotFoundException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			return null; 
+		}
+
+	
+	};
+	/**
+	 * 
+	 */
+	static final long serialVersionUID = 1L;
+	protected EnumSet<DeviceField> keyFields;
     protected Entity entity;
-    private int hashCode = 0;
-    protected static Logger logger =
+
+    
+    @Override
+	public String toString() {
+		return "IndexedEntity [keyFields=" + printKeyField(keyFields) + ", entity=" + entity
+				+ ", hashCode=" + hashCode + "]";
+	}
+
+	private String printKeyField(EnumSet<DeviceField> keyFields2) {
+		StringBuilder s = new StringBuilder(); 
+		
+		Iterator<DeviceField> it = keyFields2.iterator(); 
+		while (it.hasNext()){
+			s.append(it.next()); 
+			if (it.hasNext())
+				s.append(","); 
+		}
+		return s.toString(); 
+	}
+
+	private int hashCode = 0;
+    
+    
+    public EnumSet<DeviceField> getKeyFields() {
+		return keyFields;
+	}
+
+	public void setKeyFields(EnumSet<DeviceField> keyFields) {
+		this.keyFields = keyFields;
+	}
+
+	public Entity getEntity() {
+		return entity;
+	}
+
+	public void setEntity(Entity entity) {
+		this.entity = entity;
+	}
+
+	protected static Logger logger =
             LoggerFactory.getLogger(IndexedEntity.class);
     /**
      * Create a new {@link IndexedEntity} for the given {@link Entity} using 
@@ -50,7 +192,11 @@ public class IndexedEntity {
         this.entity = entity;
     }
 
-    /**
+    public IndexedEntity() {
+		// TODO Auto-generated constructor stub
+	}
+
+	/**
      * Check whether this entity has non-null values in any of its key fields
      * @return true if any key fields have a non-null value
      */

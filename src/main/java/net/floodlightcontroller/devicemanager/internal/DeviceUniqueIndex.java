@@ -20,9 +20,13 @@ package net.floodlightcontroller.devicemanager.internal;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Iterator;
-import java.util.concurrent.ConcurrentHashMap;
+
 
 import net.floodlightcontroller.devicemanager.IDeviceService.DeviceField;
+import smartkv.client.tables.IKeyValueTable;
+import smartkv.client.tables.TableBuilder;
+import smartkv.client.util.Serializer;
+import smartkv.client.workloads.WorkloadLoggerTable;
 
 /**
  * An index that maps key fields of an entity uniquely to a device key
@@ -31,7 +35,7 @@ public class DeviceUniqueIndex extends DeviceIndex {
     /**
      * The index
      */
-    private final ConcurrentHashMap<IndexedEntity, Long> index;
+    private final IKeyValueTable<IndexedEntity, Long> index;
 
     /**
      * Construct a new device index using the provided key fields
@@ -39,7 +43,12 @@ public class DeviceUniqueIndex extends DeviceIndex {
      */
     public DeviceUniqueIndex(EnumSet<DeviceField> keyFields) {
         super(keyFields);
-        index = new ConcurrentHashMap<IndexedEntity, Long>();
+        
+        index = WorkloadLoggerTable.withSingletonLogger(new TableBuilder<IndexedEntity,Long>().setTableName("DEVICE_UNIQUE_INDEX")
+     		   .setKeySerializer(IndexedEntity.SERIALIZER)
+     		   .setValueSerializer(Serializer.LONG).setCid(0)
+     		   ); 
+
     }
 
     // ***********

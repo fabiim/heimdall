@@ -17,6 +17,7 @@
 
 package net.floodlightcontroller.devicemanager.internal;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -29,41 +30,49 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
 
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-import org.openflow.util.HexString;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import net.floodlightcontroller.devicemanager.IDeviceService.DeviceField;
-import net.floodlightcontroller.devicemanager.web.DeviceSerializer;
 import net.floodlightcontroller.devicemanager.IDevice;
+import net.floodlightcontroller.devicemanager.IDeviceService.DeviceField;
 import net.floodlightcontroller.devicemanager.IEntityClass;
 import net.floodlightcontroller.devicemanager.SwitchPort;
 import net.floodlightcontroller.devicemanager.SwitchPort.ErrorStatus;
+import net.floodlightcontroller.devicemanager.web.DeviceSerializer;
 import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.packet.IPv4;
 import net.floodlightcontroller.topology.ITopologyService;
+
+import org.openflow.util.HexString;
+import org.python.google.common.collect.Maps;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.google.common.collect.Lists;
 
 /**
  * Concrete implementation of {@link IDevice}
  * @author readams
  */
 @JsonSerialize(using=DeviceSerializer.class)
-public class Device implements IDevice {
+public class Device implements IDevice, Serializable {
     protected static Logger log =
             LoggerFactory.getLogger(Device.class);
 
     private final Long deviceKey;
-    protected final DeviceManagerImpl deviceManager;
-
-    protected final Entity[] entities;
-    private final IEntityClass entityClass;
-
-    protected final String macAddressString;
+    
+    public  static  DeviceManagerImpl deviceManager; 
+    protected  Entity[] entities;
+    private IEntityClass entityClass;
+    //private static final Map<String, IEntityClass> classes = Maps.newConcurrentMap(); 
+    protected  String macAddressString;
     // the vlan Ids from the entities of this device
-    protected final Short[] vlanIds;
+    protected  Short[] vlanIds;
     protected volatile String dhcpClientName;
 
+    public void setEntityClass(IEntityClass clazz){
+    	this.entityClass = clazz; 
+    	//entityClass = clazz.getName();
+    	//Device.classes.put(entityClass, clazz);
+    }
     /**
      * These are the old attachment points for the device that were
      * valid no more than INACTIVITY_TIME ago.
@@ -78,6 +87,47 @@ public class Device implements IDevice {
     // Constructors
     // ************
 
+    
+    public Device(Device device) {
+		List<AttachmentPoint> aps = new ArrayList<AttachmentPoint>();
+		for (AttachmentPoint ap : device.attachmentPoints){
+			aps.add(new AttachmentPoint(ap)); 
+		}
+		
+		this.attachmentPoints = aps; 
+		this.deviceKey = device.deviceKey; 
+		this.dhcpClientName = device.dhcpClientName; 
+		setEntityClass(device.getEntityClass());
+		this.macAddressString = device.macAddressString; 
+		
+		if (device.oldAPs != null){
+		List<AttachmentPoint> oldAps = new ArrayList<AttachmentPoint>(); 
+		for (AttachmentPoint ap : device.oldAPs){
+			oldAps.add(new AttachmentPoint(ap)); 
+		}
+		this.oldAPs = oldAPs; 
+		}
+		
+		if (device.vlanIds != null){
+		Short[] dIds = device.vlanIds; 
+		Short[] vlanIds = new Short[dIds.length]; 
+		for (int i = 0, length = dIds.length ; i < length ; i++){ 
+				vlanIds[i] = dIds[i]; 
+		}
+		this.vlanIds = device.vlanIds; 
+		}
+		
+		if (device.getEntities() != null){
+			Entity[] deviceEntities = device.getEntities(); 
+			Entity[] newEntities = new Entity[deviceEntities.length]; 
+			for (int i = 0 , len = deviceEntities.length; i < len ; i++){
+				newEntities[i] = new Entity(deviceEntities[i]); 
+			}
+			this.entities = device.entities; 
+
+		}
+	}
+    
     /**
      * Create a device from an entities
      * @param deviceManager the device manager for this device
@@ -89,12 +139,11 @@ public class Device implements IDevice {
                   Long deviceKey,
                   Entity entity,
                   IEntityClass entityClass) {
-        this.deviceManager = deviceManager;
         this.deviceKey = deviceKey;
         this.entities = new Entity[] {entity};
         this.macAddressString =
                 HexString.toHexString(entity.getMacAddress(), 6);
-        this.entityClass = entityClass;
+        setEntityClass(entityClass); 
         Arrays.sort(this.entities);
 
         this.dhcpClientName = null;
@@ -132,7 +181,6 @@ public class Device implements IDevice {
                   Collection<AttachmentPoint> attachmentPoints,
                   Collection<Entity> entities,
                   IEntityClass entityClass) {
-        this.deviceManager = deviceManager;
         this.deviceKey = deviceKey;
         this.dhcpClientName = dhcpClientName;
         this.entities = entities.toArray(new Entity[entities.size()]);
@@ -148,7 +196,7 @@ public class Device implements IDevice {
         }
         this.macAddressString =
                 HexString.toHexString(this.entities[0].getMacAddress(), 6);
-        this.entityClass = entityClass;
+        setEntityClass(entityClass); 
         Arrays.sort(this.entities);
         vlanIds = computeVlandIds();
     }
@@ -168,7 +216,6 @@ public class Device implements IDevice {
     public Device(Device device,
                   Entity newEntity,
                   int insertionpoint) {
-        this.deviceManager = device.deviceManager;
         this.deviceKey = device.deviceKey;
         this.dhcpClientName = device.dhcpClientName;
 
@@ -665,6 +712,7 @@ public class Device implements IDevice {
             // We have an IP address only if among the devices within the class
             // we have the most recent entity with that IP.
             boolean validIP = true;
+            IEntityClass entityClass = this.entityClass; 
             Iterator<Device> devices =
                     deviceManager.queryClassByEntity(entityClass, ipv4Fields, e);
             while (devices.hasNext()) {
@@ -692,6 +740,21 @@ public class Device implements IDevice {
         return vals.toArray(new Integer[vals.size()]);
     }
 
+    
+    public Integer[] getIPv4AddressesToString() {
+        // XXX - TODO we can cache this result.  Let's find out if this
+        // is really a performance bottleneck first though.
+
+        TreeSet<Integer> vals = new TreeSet<Integer>();
+        if (entities != null){
+        for (Entity e : entities) {
+            if (e.getIpv4Address() == null) continue;
+
+            vals.add(e.getIpv4Address());
+        }
+        }
+        return vals.toArray(new Integer[vals.size()]);
+    }
     @Override
     public Short[] getSwitchPortVlanIds(SwitchPort swp) {
         TreeSet<Short> vals = new TreeSet<Short>();
@@ -724,7 +787,7 @@ public class Device implements IDevice {
 
     @Override
     public IEntityClass getEntityClass() {
-        return entityClass;
+        return this.entityClass; 
     }
 
     public Entity[] getEntities() {
@@ -777,12 +840,12 @@ public class Device implements IDevice {
         builder.append("Device [deviceKey=");
         builder.append(deviceKey);
         builder.append(", entityClass=");
-        builder.append(entityClass.getName());
+        builder.append(entityClass);
         builder.append(", MAC=");
         builder.append(macAddressString);
         builder.append(", IPs=[");
         boolean isFirst = true;
-        for (Integer ip: getIPv4Addresses()) {
+        for (Integer ip: getIPv4AddressesToString()) {
             if (!isFirst)
                 builder.append(", ");
             isFirst = false;
@@ -791,6 +854,10 @@ public class Device implements IDevice {
         builder.append("], APs=");
         builder.append(Arrays.toString(getAttachmentPoints(true)));
         builder.append("]");
+        
+        builder.append(" Entities = [" + Arrays.toString(entities) + "]"); 
         return builder.toString();
     }
+
+	
 }
