@@ -20,9 +20,14 @@ package net.floodlightcontroller.devicemanager.internal;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Iterator;
-import java.util.concurrent.ConcurrentHashMap;
 
 import net.floodlightcontroller.devicemanager.IDeviceService.DeviceField;
+import smartkv.client.tables.CachedColumnTable;
+import smartkv.client.tables.ICachedKeyValueTable;
+import smartkv.client.tables.TableBuilder;
+import smartkv.client.tables.VersionedValue;
+import smartkv.client.util.Serializer;
+import smartkv.client.workloads.WorkloadLoggerTable;
 
 /**
  * An index that maps key fields of an entity uniquely to a device key
@@ -31,7 +36,7 @@ public class DeviceUniqueIndex extends DeviceIndex {
     /**
      * The index
      */
-    private final ConcurrentHashMap<IndexedEntity, Long> index;
+    private final ICachedKeyValueTable<IndexedEntity, Long> index;
 
     /**
      * Construct a new device index using the provided key fields
@@ -39,9 +44,14 @@ public class DeviceUniqueIndex extends DeviceIndex {
      */
     public DeviceUniqueIndex(EnumSet<DeviceField> keyFields) {
         super(keyFields);
-        index = new ConcurrentHashMap<IndexedEntity, Long>();
+        
+        index = CachedColumnTable.startCache(WorkloadLoggerTable.withSingletonLogger(new TableBuilder<IndexedEntity,Long>().setTableName("DEVICE_UNIQUE_INDEX")
+     		   .setKeySerializer(IndexedEntity.SERIALIZER)
+     		   .setValueSerializer(Serializer.LONG).setCid(0)
+     		   .setCrossReferenceTable("DMAP") 
+     		   ));
     }
-
+    
     // ***********
     // DeviceIndex
     // ***********
@@ -112,5 +122,22 @@ public class DeviceUniqueIndex extends DeviceIndex {
             return null;
         return deviceKey;
     }
-
+    
+    /**
+     * Look up a {@link Device} based on the provided {@link Entity}.
+     * @param entity the entity to search for
+     * @return The key for the {@link Device} object if found
+     */
+    public VersionedValue<Object> findDeviceByEntity(Entity entity, long ts ) {
+        IndexedEntity ie = new IndexedEntity(keyFields, entity); 
+        VersionedValue<Object> device = index.getVersionedValueByReference(ie, ts);
+        if (device == null)
+            return null;
+        return device;
+    }
+    
+    public VersionedValue<Object> findDeviceByEntity(Entity entity) {
+    	return findDeviceByEntity(entity, 0); 
+    }
+    
 }
