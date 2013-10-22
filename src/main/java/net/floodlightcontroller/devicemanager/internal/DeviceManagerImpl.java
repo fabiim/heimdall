@@ -14,8 +14,12 @@
  *    License for the specific language governing permissions and limitations
  *    under the License.
  **/
-
+//FIXME - make sure than on arp requests broadcast we are not going to the data store. 
 package net.floodlightcontroller.devicemanager.internal;
+
+import static net.floodlightcontroller.devicemanager.internal.DeviceManagerImpl.DeviceUpdate.Change.ADD;
+import static net.floodlightcontroller.devicemanager.internal.DeviceManagerImpl.DeviceUpdate.Change.CHANGE;
+import static net.floodlightcontroller.devicemanager.internal.DeviceManagerImpl.DeviceUpdate.Change.DELETE;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -34,7 +38,6 @@ import java.util.ListIterator;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ScheduledExecutorService;
@@ -43,11 +46,11 @@ import java.util.concurrent.TimeUnit;
 import net.floodlightcontroller.core.FloodlightContext;
 import net.floodlightcontroller.core.HAListenerTypeMarker;
 import net.floodlightcontroller.core.IFloodlightProviderService;
+import net.floodlightcontroller.core.IFloodlightProviderService.Role;
 import net.floodlightcontroller.core.IHAListener;
 import net.floodlightcontroller.core.IInfoProvider;
 import net.floodlightcontroller.core.IOFMessageListener;
 import net.floodlightcontroller.core.IOFSwitch;
-import net.floodlightcontroller.core.IFloodlightProviderService.Role;
 import net.floodlightcontroller.core.module.FloodlightModuleContext;
 import net.floodlightcontroller.core.module.FloodlightModuleException;
 import net.floodlightcontroller.core.module.IFloodlightModule;
@@ -57,8 +60,8 @@ import net.floodlightcontroller.core.util.SingletonTask;
 import net.floodlightcontroller.debugcounter.IDebugCounter;
 import net.floodlightcontroller.debugcounter.IDebugCounterService;
 import net.floodlightcontroller.debugcounter.IDebugCounterService.CounterException;
-import net.floodlightcontroller.debugcounter.NullDebugCounter;
 import net.floodlightcontroller.debugcounter.IDebugCounterService.CounterType;
+import net.floodlightcontroller.debugcounter.NullDebugCounter;
 import net.floodlightcontroller.debugevent.IDebugEventService;
 import net.floodlightcontroller.debugevent.IDebugEventService.EventColumn;
 import net.floodlightcontroller.debugevent.IDebugEventService.EventFieldType;
@@ -67,11 +70,11 @@ import net.floodlightcontroller.debugevent.IDebugEventService.MaxEventsRegistere
 import net.floodlightcontroller.debugevent.IEventUpdater;
 import net.floodlightcontroller.debugevent.NullDebugEvent;
 import net.floodlightcontroller.devicemanager.IDevice;
+import net.floodlightcontroller.devicemanager.IDeviceListener;
 import net.floodlightcontroller.devicemanager.IDeviceService;
 import net.floodlightcontroller.devicemanager.IEntityClass;
 import net.floodlightcontroller.devicemanager.IEntityClassListener;
 import net.floodlightcontroller.devicemanager.IEntityClassifierService;
-import net.floodlightcontroller.devicemanager.IDeviceListener;
 import net.floodlightcontroller.devicemanager.SwitchPort;
 import net.floodlightcontroller.devicemanager.internal.DeviceSyncRepresentation.SyncEntity;
 import net.floodlightcontroller.devicemanager.web.DeviceRoutable;
@@ -82,19 +85,17 @@ import net.floodlightcontroller.flowcache.OFMatchReconcile;
 import net.floodlightcontroller.linkdiscovery.ILinkDiscovery.LDUpdate;
 import net.floodlightcontroller.packet.ARP;
 import net.floodlightcontroller.packet.DHCP;
+import net.floodlightcontroller.packet.DHCP.DHCPOptionCode;
 import net.floodlightcontroller.packet.DHCPOption;
 import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.packet.IPv4;
 import net.floodlightcontroller.packet.UDP;
-import net.floodlightcontroller.packet.DHCP.DHCPOptionCode;
 import net.floodlightcontroller.restserver.IRestApiService;
 import net.floodlightcontroller.storage.IStorageSourceService;
 import net.floodlightcontroller.threadpool.IThreadPoolService;
 import net.floodlightcontroller.topology.ITopologyListener;
 import net.floodlightcontroller.topology.ITopologyService;
 import net.floodlightcontroller.util.MultiIterator;
-import static net.floodlightcontroller.devicemanager.internal.
-DeviceManagerImpl.DeviceUpdate.Change.*;
 
 import org.openflow.protocol.OFMatchWithSwDpid;
 import org.openflow.protocol.OFMessage;
@@ -110,6 +111,15 @@ import org.sdnplatform.sync.error.ObsoleteVersionException;
 import org.sdnplatform.sync.error.SyncException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import smartkv.client.IDataStoreProxy;
+import smartkv.client.tables.IKeyValueTable;
+import smartkv.client.tables.TableBuilder;
+import smartkv.client.tables.VersionedValue;
+import smartkv.client.util.Serializer;
+import smartkv.client.workloads.ActivityEvent;
+import smartkv.client.workloads.RequestLogger;
+import smartkv.client.workloads.WorkloadLoggerTable;
 
 /**
  * DeviceManager creates Devices based upon MAC addresses seen in the network.
@@ -221,12 +231,12 @@ IFlowReconcileListener, IInfoProvider {
      * This is the master device map that maps device IDs to {@link Device}
      * objects.
      */
-    protected ConcurrentHashMap<Long, Device> deviceMap;
+    protected IKeyValueTable<Long, Device> deviceMap;
 
     /**
      * Counter used to generate device keys
      */
-    protected AtomicLong deviceKeyCounter = new AtomicLong(0);
+    protected IDataStoreProxy proxy;
 
     /**
      * This is the primary entity index that contains all entities
@@ -236,7 +246,7 @@ IFlowReconcileListener, IInfoProvider {
     /**
      * This stores secondary indices over the fields in the devices
      */
-    protected Map<EnumSet<DeviceField>, DeviceIndex> secondaryIndexMap;
+    protected IKeyValueTable<EnumSet<DeviceField>, DeviceIndex> secondaryIndexMap;
 
     /**
      * This map contains state for each of the {@ref IEntityClass}
@@ -257,24 +267,24 @@ IFlowReconcileListener, IInfoProvider {
     /**
      * Used to cache state about specific entity classes
      */
-    protected class ClassState {
+    protected static class ClassState {
 
         /**
          * The class index
          */
-        protected DeviceUniqueIndex classIndex;
+        protected net.floodlightcontroller.devicemanager.internal.DeviceUniqueIndex classIndex;
 
         /**
          * This stores secondary indices over the fields in the device for the
          * class
          */
         protected Map<EnumSet<DeviceField>, DeviceIndex> secondaryIndexMap;
-
+        
         /**
          * Allocate a new {@link ClassState} object for the class
          * @param clazz the class to use for the state
          */
-        public ClassState(IEntityClass clazz) {
+        public ClassState(IEntityClass clazz, IEntityClassifierService entityClassifier, Collection<EnumSet<DeviceField>> sets) {
             EnumSet<DeviceField> keyFields = clazz.getKeyFields();
             EnumSet<DeviceField> primaryKeyFields =
                     entityClassifier.getKeyFields();
@@ -286,7 +296,7 @@ IFlowReconcileListener, IInfoProvider {
 
             secondaryIndexMap =
                     new HashMap<EnumSet<DeviceField>, DeviceIndex>();
-            for (EnumSet<DeviceField> fields : perClassIndices) {
+            for (EnumSet<DeviceField> fields : sets) {
                 secondaryIndexMap.put(fields,
                                       new DeviceMultiIndex(fields));
             }
@@ -501,7 +511,7 @@ IFlowReconcileListener, IInfoProvider {
             perClassIndices.add(keyFields);
         } else {
             secondaryIndexMap.put(keyFields,
-                                  new DeviceMultiIndex(keyFields));
+                                  new net.floodlightcontroller.devicemanager.internal.DeviceMultiIndex(keyFields));
         }
     }
 
@@ -911,7 +921,7 @@ IFlowReconcileListener, IInfoProvider {
         this.haListenerDelegate = new HAListenerDelegate();
         registerDeviceManagerDebugCounters();
         registerDeviceManagerDebugEvents();
-        this.addListener(new DeviceDebugEventLogger());
+        //this.addListener(new DeviceDebugEventLogger());
     }
 
     private void registerDeviceManagerDebugEvents() throws FloodlightModuleException {
@@ -931,11 +941,12 @@ IFlowReconcileListener, IInfoProvider {
     @Override
     public void startUp(FloodlightModuleContext fmc)
             throws FloodlightModuleException {
+    	Device.deviceManager = this; 
         isMaster = (floodlightProvider.getRole() == Role.MASTER);
+        deviceMap = WorkloadLoggerTable.<Long, Device>withSingletonLogger(new TableBuilder<Long,Device>().setTableName("DMAP").setKeySerializer(Serializer.LONG).setCid(0));
         primaryIndex = new DeviceUniqueIndex(entityClassifier.getKeyFields());
-        secondaryIndexMap = new HashMap<EnumSet<DeviceField>, DeviceIndex>();
-
-        deviceMap = new ConcurrentHashMap<Long, Device>();
+        secondaryIndexMap = null;
+        proxy = new smartkv.client.KeyValueProxy(0); 
         classStateMap =
                 new ConcurrentHashMap<String, ClassState>();
         apComparator = new AttachmentPointComparator();
@@ -1184,12 +1195,14 @@ IFlowReconcileListener, IInfoProvider {
         Ethernet eth =
                 IFloodlightProviderService.bcStore.
                 get(cntx,IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
-
+        ActivityEvent e = RequestLogger.getRequestLogger().addActivity(ActivityEvent.packetIn(eth.toString()));
+        
         // Extract source entity information
         Entity srcEntity =
                 getSourceEntityFromPacket(eth, sw.getId(), pi.getInPort());
         if (srcEntity == null) {
             cntInvalidSource.updateCounterNoFlush();
+            RequestLogger.getRequestLogger().endActivity(e);
             return Command.STOP;
         }
 
@@ -1205,6 +1218,7 @@ IFlowReconcileListener, IInfoProvider {
         Device srcDevice = learnDeviceByEntity(srcEntity);
         if (srcDevice == null) {
             cntNoSource.updateCounterNoFlush();
+            RequestLogger.getRequestLogger().endActivity(e);
             return Command.STOP;
         }
 
@@ -1215,6 +1229,7 @@ IFlowReconcileListener, IInfoProvider {
         // classes of the source.
         if (eth.getDestinationMAC().toLong() == 0) {
             cntInvalidDest.updateCounterNoFlush();
+            RequestLogger.getRequestLogger().endActivity(e);
             return Command.STOP;
         }
         Entity dstEntity = getDestEntityFromPacket(eth);
@@ -1238,7 +1253,7 @@ IFlowReconcileListener, IInfoProvider {
        }
 
         snoopDHCPClientName(eth, srcDevice);
-
+        RequestLogger.getRequestLogger().endActivity(e);
         return Command.CONTINUE;
     }
 
@@ -1510,27 +1525,31 @@ IFlowReconcileListener, IInfoProvider {
     protected Device findDestByEntity(IEntityClass reference,
                                       Entity dstEntity) {
 
-        // Look  up the fully-qualified entity to see if it
-        // exists in the primary entity index
-        Long deviceKey = primaryIndex.findByEntity(dstEntity);
-
-        if (deviceKey == null) {
-            // This could happen because:
-            // 1) no destination known, or a broadcast destination
-            // 2) if we have attachment point key fields since
-            // attachment point information isn't available for
-            // destination devices.
-            // For the second case, we'll need to match up the
-            // destination device with the class of the source
-            // device.
-            ClassState classState = getClassState(reference);
-            if (classState.classIndex == null) {
-                return null;
-            }
-            deviceKey = classState.classIndex.findByEntity(dstEntity);
-        }
-        if (deviceKey == null) return null;
-        return deviceMap.get(deviceKey);
+    	// Look  up the fully-qualified entity to see if it
+    	// exists in the primary entity index
+    	if (dstEntity.getMacAddress() != 0xffffffffffffL) {
+    		VersionedValue<Object> device = primaryIndex.findDeviceByEntity(dstEntity);
+    		
+    		return device != null ? (Device) device.value() : null;
+    		/*if (deviceKey == null) { //FIXME this will never happen (returning something on the classstate index... 
+    			// This could happen because:
+    			// 1) no destination known, or a broadcast destination
+    			// 2) if we have attachment point key fields since
+    			// attachment point information isn't available for
+    			// destination devices.
+    			// For the second case, we'll need to match up the
+    			// destination device with the class of the source
+    			// device. 
+    			ClassState classState = getClassState(reference);
+    			if (classState.classIndex == null) {
+    				return null;
+    			}
+    			deviceKey = classState.classIndex.findByEntity(dstEntity);
+    		}
+    		if (deviceKey == null) return null;
+    		return deviceMap.get(deviceKey);*/
+    	}
+    	return null; 
     }
 
     /**
@@ -1558,7 +1577,7 @@ IFlowReconcileListener, IInfoProvider {
         ArrayList<Long> deleteQueue = null;
         LinkedList<DeviceUpdate> deviceUpdates = null;
         Device device = null;
-
+        VersionedValue<Object> deviceWithVersion = null; 
         // we may need to restart the learning process if we detect
         // concurrent modification.  Note that we ensure that at least
         // one thread should always succeed so we don't get into infinite
@@ -1568,7 +1587,9 @@ IFlowReconcileListener, IInfoProvider {
 
             // Look up the fully-qualified entity to see if it already
             // exists in the primary entity index.
-            Long deviceKey = primaryIndex.findByEntity(entity);
+            deviceWithVersion = primaryIndex.findDeviceByEntity(entity);
+            device = deviceWithVersion != null ? (Device) deviceWithVersion.value() : null;   
+            Long deviceKey = deviceWithVersion!= null ? device.getDeviceKey() : null; 
             IEntityClass entityClass = null;
 
             if (deviceKey == null) {
@@ -1593,7 +1614,7 @@ IFlowReconcileListener, IInfoProvider {
                 // If the primary or secondary index contains the entity
                 // use resulting device key to look up the device in the
                 // device map, and use the referenced Device below.
-                device = deviceMap.get(deviceKey);
+                //device = deviceMap.get(deviceKey); 
                 if (device == null) {
                     // This can happen due to concurrent modification
                     if (logger.isDebugEnabled()) {
@@ -1632,12 +1653,11 @@ IFlowReconcileListener, IInfoProvider {
                     device = null;
                     break;
                 }
-                deviceKey = deviceKeyCounter.getAndIncrement();
+                deviceKey = (long) deviceMap.getAndIncrement("DM_ID");
                 device = allocateDevice(deviceKey, entity, entityClass);
 
-
                 // Add the new device to the primary map with a simple put
-                deviceMap.put(deviceKey, device);
+                deviceMap.insert(deviceKey, device);
 
                 // update indices
                 if (!updateIndices(device, deviceKey)) {
@@ -1684,6 +1704,7 @@ IFlowReconcileListener, IInfoProvider {
             }
             int entityindex = -1;
             if ((entityindex = device.entityIndex(entity)) >= 0) {
+            	Device oldDevice = new Device(device);
                 // Entity already exists
                 // update timestamp on the found entity
                 Date lastSeen = entity.getLastSeenTimestamp();
@@ -1692,6 +1713,9 @@ IFlowReconcileListener, IInfoProvider {
                     entity.setLastSeenTimestamp(lastSeen);
                 }
                 device.entities[entityindex].setLastSeenTimestamp(lastSeen);
+                if (!deviceMap.replace(device.getDeviceKey(), deviceWithVersion.version(), device)){
+                	continue; 
+                }
                 // we break the loop after checking for changes to the AP
             } else {
                 // New entity for this device
@@ -1932,7 +1956,7 @@ IFlowReconcileListener, IInfoProvider {
         ClassState classState = classStateMap.get(clazz.getName());
         if (classState != null) return classState;
 
-        classState = new ClassState(clazz);
+        classState = new ClassState(clazz, this.entityClassifier, perClassIndices);
         ClassState r = classStateMap.putIfAbsent(clazz.getName(), classState);
         if (r != null) {
             // concurrent add
@@ -1952,6 +1976,7 @@ IFlowReconcileListener, IInfoProvider {
         if (!primaryIndex.updateIndex(device, deviceKey)) {
             return false;
         }
+        /*Optimization : no need to get the default classState. Primary index is always null right now*/
         IEntityClass entityClass = device.getEntityClass();
         ClassState classState = getClassState(entityClass);
 
@@ -1973,9 +1998,9 @@ IFlowReconcileListener, IInfoProvider {
     private void updateSecondaryIndices(Entity entity,
                                         IEntityClass entityClass,
                                         Long deviceKey) {
-        for (DeviceIndex index : secondaryIndexMap.values()) {
+        /*for (DeviceIndex index : secondaryIndexMap.values()) {
             index.updateIndex(entity, deviceKey);
-        }
+        }*/
         ClassState state = getClassState(entityClass);
         for (DeviceIndex index : state.secondaryIndexMap.values()) {
             index.updateIndex(entity, deviceKey);
@@ -2213,6 +2238,7 @@ IFlowReconcileListener, IInfoProvider {
      */
     @Override
     public void topologyChanged(List<LDUpdate> updateList) {
+    	//FIXME - this should be working...
         Iterator<Device> diter = deviceMap.values().iterator();
         if (updateList != null) {
             if (logger.isTraceEnabled()) {
