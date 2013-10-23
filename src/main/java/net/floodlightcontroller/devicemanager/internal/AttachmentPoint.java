@@ -21,7 +21,9 @@
 
 package net.floodlightcontroller.devicemanager.internal;
 
-public class AttachmentPoint {
+import java.io.Serializable;
+
+public class AttachmentPoint implements Serializable {
     long  sw;
     short port;
     long  activeSince;

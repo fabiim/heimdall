@@ -17,16 +17,18 @@
 
 package net.floodlightcontroller.devicemanager.internal;
 
+import java.io.Serializable;
 import java.util.Date;
 
+import net.floodlightcontroller.core.web.serializers.DPIDSerializer;
 import net.floodlightcontroller.core.web.serializers.IPv4Serializer;
 import net.floodlightcontroller.core.web.serializers.MACSerializer;
-import net.floodlightcontroller.core.web.serializers.DPIDSerializer;
 import net.floodlightcontroller.packet.IPv4;
+
+import org.openflow.util.HexString;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-import org.openflow.util.HexString;
 
 /**
  * An entity on the network is a visible trace of a device that corresponds
@@ -42,7 +44,7 @@ import org.openflow.util.HexString;
  * @author readams
  *
  */
-public class Entity implements Comparable<Entity> {
+public class Entity implements Comparable<Entity>, Serializable {
     /**
      * Timeout for computing {@link Entity#activeSince}.
      * @see {@link Entity#activeSince}
@@ -124,7 +126,18 @@ public class Entity implements Comparable<Entity> {
     // Getters/Setters
     // ***************
 
-    @JsonSerialize(using=MACSerializer.class)
+    public Entity(Entity entity){ 
+		
+		this.macAddress = entity.macAddress; 
+		this.ipv4Address = entity.ipv4Address; 
+		this.vlan = entity.vlan; 
+		this.switchDPID = entity.switchDPID;
+		this.switchPort = entity.switchPort; 
+		this.lastSeenTimestamp =  new Date(entity.lastSeenTimestamp.getTime()); 
+		this.activeSince = new Date(entity.activeSince.getTime()) ;
+	}
+    
+	@JsonSerialize(using=MACSerializer.class)
     public long getMacAddress() {
         return macAddress;
     }
