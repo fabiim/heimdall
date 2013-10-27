@@ -17,32 +17,74 @@
 
 package net.floodlightcontroller.devicemanager.internal;
 
+import java.io.ByteArrayInputStream;
+import java.io.ObjectInputStream;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Iterator;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.List;
+import java.util.Set;
 
 import net.floodlightcontroller.devicemanager.IDeviceService.DeviceField;
+import smartkv.client.tables.CachedColumnTable;
+import smartkv.client.tables.ColumnObject;
+import smartkv.client.tables.ICachedKeyValueTable;
+import smartkv.client.tables.TableBuilder;
+import smartkv.client.tables.VersionedValue;
+import smartkv.client.util.Serializer;
+import smartkv.client.workloads.WorkloadLoggerTable;
 
 /**
  * An index that maps key fields of an entity uniquely to a device key
  */
 public class DeviceUniqueIndex extends DeviceIndex {
-    /**
+	
+	public static class TwoDevices{
+		public final VersionedValue<Device> device; 
+		public final Device destinationDevice;
+		public TwoDevices(VersionedValue<Device> device,
+				List<AttachmentPoint> list) {
+			super();
+			this.device = device;
+			this.destinationDevice = new Device(); 
+			this.destinationDevice.setAps(list);
+		} 
+	}
+	
+	/**
      * The index
      */
-    private final ConcurrentHashMap<IndexedEntity, Long> index;
-
+    private final ICachedKeyValueTable<IndexedEntity, Long> index;
+    
     /**
      * Construct a new device index using the provided key fields
      * @param keyFields the key fields to use
      */
-    public DeviceUniqueIndex(EnumSet<DeviceField> keyFields) {
+    public DeviceUniqueIndex(EnumSet<DeviceField> keyFields, ColumnObject c) {
         super(keyFields);
-        index = new ConcurrentHashMap<IndexedEntity, Long>();
+        
+        index = CachedColumnTable.startCache(WorkloadLoggerTable.withSingletonLogger(new TableBuilder<IndexedEntity,Long>().setTableName("DEVICE_UNIQUE_INDEX")
+     		   .setKeySerializer(IndexedEntity.SERIALIZER)
+     		   .setValueSerializer(Serializer.LONG).setCid(0)
+     		   .setCrossReferenceTable("DMAP") 
+     		   .setCrossReferenceColumnSerializer(c)
+     		   ));
     }
-
-    // ***********
+    
+    public DeviceUniqueIndex(EnumSet<DeviceField> keyFields, ICachedKeyValueTable<IndexedEntity, Long> table) {
+        super(keyFields);
+        this.index = table; 
+    }
+    
+    public DeviceUniqueIndex(EnumSet<DeviceField> keyFields){
+        super(keyFields);
+        index = CachedColumnTable.startCache(WorkloadLoggerTable.withSingletonLogger(new TableBuilder<IndexedEntity,Long>().setTableName("DEVICE_UNIQUE_INDEX")
+      		   .setKeySerializer(IndexedEntity.SERIALIZER)
+      		   .setValueSerializer(Serializer.LONG).setCid(0)
+      		   .setCrossReferenceTable("DMAP") 
+      		   ));
+    }
+       // ***********
     // DeviceIndex
     // ***********
 
@@ -62,10 +104,10 @@ public class DeviceUniqueIndex extends DeviceIndex {
 
     @Override
     public boolean updateIndex(Device device, Long deviceKey) {
-        for (Entity e : device.entities) {
+        for (Entity e : device.getEntities()) {
             IndexedEntity ie = new IndexedEntity(keyFields, e);
             if (!ie.hasNonNullKeys()) continue;
-
+            
             Long ret = index.putIfAbsent(ie, deviceKey);
             if (ret != null && !ret.equals(deviceKey)) {
                 // If the return value is non-null, then fail the insert
@@ -76,7 +118,7 @@ public class DeviceUniqueIndex extends DeviceIndex {
         }
         return true;
     }
-
+    
     @Override
     public void updateIndex(Entity entity, Long deviceKey) {
         IndexedEntity ie = new IndexedEntity(keyFields, entity);
@@ -112,5 +154,89 @@ public class DeviceUniqueIndex extends DeviceIndex {
             return null;
         return deviceKey;
     }
+    
+    /**
+     * Look up a {@link Device} based on the provided {@link Entity}.
+     * @param entity the entity to search for
+     * @return The key for the {@link Device} object if found
+     */
+    public VersionedValue<Object> findDeviceByEntity(Entity entity, long ts ) {
+        IndexedEntity ie = new IndexedEntity(keyFields, entity);
+        
+        VersionedValue<Object> device = index.getVersionedValueByReference(ie, ts);
+        if (device == null)
+            return null;
+        return device;
+    }
+    
+    public VersionedValue<Object> findDeviceByEntity(Entity entity, long ts , Set<String> strings) {
+        IndexedEntity ie = new IndexedEntity(keyFields, entity);
+        VersionedValue<Object> device = index.getColumnsByReference(ie, strings,ts);
+        if (device == null)
+            return null;
+        return device;
+    }
+    
+    
+    public VersionedValue<Object> findDeviceByEntity(Entity entity) {
+    	return findDeviceByEntity(entity, 0); 
+    }
+    
+    public TwoDevices findDevicesByEntities(Entity source, Entity destination){
+    	try{
+    		IndexedEntity ieSource = new IndexedEntity(keyFields, source);  
+    		IndexedEntity ieDestination = new IndexedEntity(keyFields, destination);
+    		if (ieSource == null){
+    			return null; 
+    		}
+    		byte[] result = index.getTwoDevices(ieSource, ieDestination);
+    		
+    		if ( result != null){
+    			ByteArrayInputStream stream = new ByteArrayInputStream(result);
+    			ObjectInputStream ostream = new ObjectInputStream(stream); 
+    			VersionedValue<Device> sourceDevice = null;
+    			List<AttachmentPoint>  list = null;
+    			Object o = ostream.readObject();
+    			if (o instanceof VersionedValue ){
+    				sourceDevice = (VersionedValue<Device>) o; 
+    			}
+    			else{
+    				list = (List<AttachmentPoint>)  ostream.readObject();
+    			}
+    			if (ostream.available() >0){
+    				o = ostream.readObject();
+    				if (o instanceof VersionedValue ){
+    					sourceDevice = (VersionedValue<Device>) o; 
+    				}
+    				else{
+    					list = (List<AttachmentPoint>)  ostream.readObject();
+    				}
+    			}
+    			return new DeviceUniqueIndex.TwoDevices(sourceDevice, list);
+    		}
+    	}catch (Exception e ){
+    		e.printStackTrace(); 
+    	}
+    	return null; 
+    }
 
+	/**
+	 * @param entity
+	 * @return
+	 */
+	public Device createDevice(Entity entity) {
+		return this.index.createDevice(entity); 
+	}
+
+	/**
+	 * @param deviceKey
+	 * @param version
+	 * @param entityindex
+	 * @param l
+	 * @param dstEntity
+	 */
+	public boolean updateDevice(Long deviceKey, int version, int entityindex,
+			long l) {
+		return this.index.updateDevice(deviceKey, version, entityindex, l); 
+	}
 }

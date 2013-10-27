@@ -20,12 +20,18 @@ package net.floodlightcontroller.devicemanager.internal;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.google.common.collect.Sets;
+
 import net.floodlightcontroller.devicemanager.IDeviceService.DeviceField;
 import net.floodlightcontroller.util.IterableIterator;
+import smartkv.client.tables.IKeyValueTable;
+import smartkv.client.tables.TableBuilder;
+import smartkv.client.workloads.WorkloadLoggerTable;
 
 /**
  * An index that maps key fields of an entity to device keys, with multiple
@@ -35,14 +41,22 @@ public class DeviceMultiIndex extends DeviceIndex {
     /**
      * The index
      */
-    private ConcurrentHashMap<IndexedEntity, Collection<Long>> index;
+    private IKeyValueTable<IndexedEntity, HashSet<Long>> index;
 
     /**
      * @param keyFields
      */
     public DeviceMultiIndex(EnumSet<DeviceField> keyFields) {
         super(keyFields);
-        index = new ConcurrentHashMap<IndexedEntity, Collection<Long>>();
+        index =  WorkloadLoggerTable.<IndexedEntity, HashSet<Long>>withSingletonLogger(new TableBuilder<IndexedEntity, HashSet<Long>>()
+        		.setTableName("MULTI_INDEX")
+        		.setKeySerializer(IndexedEntity.SERIALIZER)
+        		.setCid(0)); 
+    }
+
+    public DeviceMultiIndex(EnumSet<DeviceField> keyFields, IKeyValueTable<IndexedEntity, HashSet<Long>> ind) {
+        super(keyFields);
+        index = ind;  
     }
 
     // ***********
@@ -61,13 +75,13 @@ public class DeviceMultiIndex extends DeviceIndex {
     
     @Override
     public Iterator<Long> getAll() {
-        Iterator<Collection<Long>> iter = index.values().iterator();
+        Iterator<HashSet<Long>> iter = index.values().iterator();
         return new IterableIterator<Long>(iter);
     }
     
     @Override
     public boolean updateIndex(Device device, Long deviceKey) {
-        for (Entity e : device.entities) {
+        for (Entity e : device.getEntities()) {
             updateIndex(e, deviceKey);
         }
         return true;
@@ -75,23 +89,33 @@ public class DeviceMultiIndex extends DeviceIndex {
     
     @Override
     public void updateIndex(Entity entity, Long deviceKey) {
-        Collection<Long> devices = null;
-
+    	HashSet<Long> devices = null;
+    	
         IndexedEntity ie = new IndexedEntity(keyFields, entity);
         if (!ie.hasNonNullKeys()) return;
-
-        devices = index.get(ie);
-        if (devices == null) {
-            Map<Long,Boolean> chm = new ConcurrentHashMap<Long,Boolean>();
-            devices = Collections.newSetFromMap(chm);
-            Collection<Long> r = index.putIfAbsent(ie, devices);
-            if (r != null)
-                devices = r;
-        }
         
+        devices = index.get(ie);
+        HashSet<Long> returnedDevices = null;
+        if (devices == null) {
+        	//Add new Collection to device with that IP         	
+            Map<Long,Boolean> chm = new ConcurrentHashMap<Long,Boolean>();
+            devices = Sets.newHashSet(Collections.newSetFromMap(chm));
+            devices.add(deviceKey);
+            returnedDevices = index.putIfAbsent(ie, devices);
+            if (returnedDevices == null){
+            	return; 
+            }
+            devices = returnedDevices; 
+        }
+        Map<Long,Boolean> chm = new ConcurrentHashMap<Long,Boolean>(); 
+		HashSet<Long> devicesBackup = Sets.newHashSet(Collections.newSetFromMap(chm));
+		for (Long l : devices){
+			devicesBackup.add(l);
+		}
         devices.add(deviceKey);
+        index.replace(ie, devicesBackup, devices);
     }
-
+    
     @Override
     public void removeEntity(Entity entity) {
         IndexedEntity ie = new IndexedEntity(keyFields, entity);

@@ -17,6 +17,7 @@
 
 package net.floodlightcontroller.devicemanager.internal;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -29,55 +30,114 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
 
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import net.floodlightcontroller.devicemanager.IDevice;
+import net.floodlightcontroller.devicemanager.IDeviceService.DeviceField;
+import net.floodlightcontroller.devicemanager.IEntityClass;
+import net.floodlightcontroller.devicemanager.SwitchPort;
+import net.floodlightcontroller.devicemanager.SwitchPort.ErrorStatus;
+import net.floodlightcontroller.devicemanager.web.DeviceSerializer;
+import net.floodlightcontroller.packet.Ethernet;
+import net.floodlightcontroller.packet.IPv4;
+import net.floodlightcontroller.topology.ITopologyService;
+
 import org.openflow.util.HexString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import net.floodlightcontroller.devicemanager.IDeviceService.DeviceField;
-import net.floodlightcontroller.devicemanager.web.DeviceSerializer;
-import net.floodlightcontroller.devicemanager.IDevice;
-import net.floodlightcontroller.devicemanager.IEntityClass;
-import net.floodlightcontroller.devicemanager.SwitchPort;
-import net.floodlightcontroller.devicemanager.SwitchPort.ErrorStatus;
-import net.floodlightcontroller.packet.Ethernet;
-import net.floodlightcontroller.packet.IPv4;
-import net.floodlightcontroller.topology.ITopologyService;
+import smartkv.client.tables.Column;
+import smartkv.client.util.Serializer;
+import smartkv.client.util.Serializer.SerialNum;
+
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.google.common.collect.Maps;
 
 /**
  * Concrete implementation of {@link IDevice}
  * @author readams
  */
 @JsonSerialize(using=DeviceSerializer.class)
-public class Device implements IDevice {
+public class Device implements IDevice, Serializable {
     protected static Logger log =
             LoggerFactory.getLogger(Device.class);
 
-    private final Long deviceKey;
-    protected final DeviceManagerImpl deviceManager;
-
-    protected final Entity[] entities;
-    private final IEntityClass entityClass;
-
-    protected final String macAddressString;
+    private  Long deviceKey;
+    
+    public  static  DeviceManagerImpl deviceManager; 
+    private  Entity[] entities;
+    private String entityClass;
+    public static final Map<String, IEntityClass> classes = Maps.newConcurrentMap(); 
+    private  String macAddressString;
     // the vlan Ids from the entities of this device
-    protected final Short[] vlanIds;
-    protected volatile String dhcpClientName;
+    private  Short[] vlanIds;
+    private volatile String dhcpClientName;
 
+    
+    @Column(serializer = SerialNum.STRING)
+    public String getEntityClassName(){
+    	return entityClass; 
+    }
+    public void setEntityClassName(String name){
+    	this.entityClass = name; 
+    }
+    public void setEntityClass(IEntityClass clazz){
+    	//this.entityClass = clazz; 
+    	entityClass = clazz.getName();
+    	Device.classes.put(entityClass, clazz);
+    }
     /**
      * These are the old attachment points for the device that were
      * valid no more than INACTIVITY_TIME ago.
      */
-    protected volatile List<AttachmentPoint> oldAPs;
+    private  volatile List<AttachmentPoint> oldAPs;
     /**
      * The current attachment points for the device.
      */
-    protected volatile List<AttachmentPoint> attachmentPoints;
+    private  volatile List<AttachmentPoint> attachmentPoints;
 
     // ************
     // Constructors
     // ************
 
+    
+    public Device(Device device) {
+		List<AttachmentPoint> aps = new ArrayList<AttachmentPoint>();
+		for (AttachmentPoint ap : device.attachmentPoints){
+			aps.add(new AttachmentPoint(ap)); 
+		}
+		
+		this.attachmentPoints = aps; 
+		this.deviceKey = device.deviceKey; 
+		this.dhcpClientName = device.dhcpClientName; 
+		setEntityClass(device.getEntityClass());
+		this.macAddressString = device.macAddressString; 
+		
+		if (device.oldAPs != null){
+		List<AttachmentPoint> oldAps = new ArrayList<AttachmentPoint>(); 
+		for (AttachmentPoint ap : device.oldAPs){
+			oldAps.add(new AttachmentPoint(ap)); 
+		}
+		this.oldAPs = oldAPs; 
+		}
+		
+		if (device.vlanIds != null){
+		Short[] dIds = device.vlanIds; 
+		Short[] vlanIds = new Short[dIds.length]; 
+		for (int i = 0, length = dIds.length ; i < length ; i++){ 
+				vlanIds[i] = dIds[i]; 
+		}
+		this.vlanIds = device.vlanIds; 
+		}
+		
+		if (device.getEntities() != null){
+			Entity[] deviceEntities = device.getEntities(); 
+			Entity[] newEntities = new Entity[deviceEntities.length]; 
+			for (int i = 0 , len = deviceEntities.length; i < len ; i++){
+				newEntities[i] = new Entity(deviceEntities[i]); 
+			}
+			this.entities = device.entities; 
+		}
+	}
+    
     /**
      * Create a device from an entities
      * @param deviceManager the device manager for this device
@@ -89,12 +149,11 @@ public class Device implements IDevice {
                   Long deviceKey,
                   Entity entity,
                   IEntityClass entityClass) {
-        this.deviceManager = deviceManager;
         this.deviceKey = deviceKey;
         this.entities = new Entity[] {entity};
         this.macAddressString =
                 HexString.toHexString(entity.getMacAddress(), 6);
-        this.entityClass = entityClass;
+        setEntityClass(entityClass); 
         Arrays.sort(this.entities);
 
         this.dhcpClientName = null;
@@ -117,7 +176,35 @@ public class Device implements IDevice {
         }
         vlanIds = computeVlandIds();
     }
+    public Device(
+            Long deviceKey,
+            Entity entity,
+            IEntityClass entityClass) {
+  this.deviceKey = deviceKey;
+  this.entities = new Entity[] {entity};
+  this.macAddressString =
+          HexString.toHexString(entity.getMacAddress(), 6);
+  setEntityClass(entityClass); 
+  Arrays.sort(this.entities);
 
+  this.dhcpClientName = null;
+  this.oldAPs = null;
+  this.attachmentPoints = null;
+
+  if (entity.getSwitchDPID() != null &&
+          entity.getSwitchPort() != null){
+      long sw = entity.getSwitchDPID();
+      short port = entity.getSwitchPort().shortValue();
+
+      AttachmentPoint ap;
+      ap = new AttachmentPoint(sw, port,
+    		  entity.getLastSeenTimestamp().getTime());
+      
+      this.attachmentPoints = new ArrayList<AttachmentPoint>();
+      this.attachmentPoints.add(ap);
+  }
+  vlanIds = computeVlandIds();
+}
     /**
      * Create a device from a set of entities
      * @param deviceManager the device manager for this device
@@ -132,7 +219,6 @@ public class Device implements IDevice {
                   Collection<AttachmentPoint> attachmentPoints,
                   Collection<Entity> entities,
                   IEntityClass entityClass) {
-        this.deviceManager = deviceManager;
         this.deviceKey = deviceKey;
         this.dhcpClientName = dhcpClientName;
         this.entities = entities.toArray(new Entity[entities.size()]);
@@ -148,7 +234,7 @@ public class Device implements IDevice {
         }
         this.macAddressString =
                 HexString.toHexString(this.entities[0].getMacAddress(), 6);
-        this.entityClass = entityClass;
+        setEntityClass(entityClass); 
         Arrays.sort(this.entities);
         vlanIds = computeVlandIds();
     }
@@ -168,7 +254,6 @@ public class Device implements IDevice {
     public Device(Device device,
                   Entity newEntity,
                   int insertionpoint) {
-        this.deviceManager = device.deviceManager;
         this.deviceKey = device.deviceKey;
         this.dhcpClientName = device.dhcpClientName;
 
@@ -241,7 +326,7 @@ public class Device implements IDevice {
      * @param apList
      * @return
      */
-    private Map<Long, AttachmentPoint> getAPMap(List<AttachmentPoint> apList) {
+    private static Map<Long, AttachmentPoint> getAPMap(List<AttachmentPoint> apList) {
 
         if (apList == null) return null;
         ITopologyService topology = deviceManager.topology;
@@ -303,7 +388,60 @@ public class Device implements IDevice {
         } else return false;
     }
 
-    /**
+    @Column(serializer = SerialNum.STRING)
+    public String getMacAddressString() {
+		return macAddressString;
+	}
+
+	public void setMacAddressString(String macAddressString) {
+		this.macAddressString = macAddressString;
+	}
+	
+	@Column
+	public Short[] getVlanIds() {
+		return vlanIds;
+	}
+
+	
+	public void setVlanIds(Short[] vlanIds) {
+		this.vlanIds = vlanIds;
+	}
+
+	@Column(serializer = SerialNum.STRING)
+	public String getDhcpClientName() {
+		return dhcpClientName;
+	}
+
+	public void setDhcpClientName(String dhcpClientName) {
+		this.dhcpClientName = dhcpClientName;
+	}
+
+	@Column
+	public List<AttachmentPoint> getOldAPs() {
+		return oldAPs;
+	}
+
+	public void setOldAPs(List<AttachmentPoint> oldAPs) {
+		this.oldAPs = oldAPs;
+	}
+
+	public static EnumSet<DeviceField> getIpv4fields() {
+		return ipv4Fields;
+	}
+
+	public void setEntities(Entity[] entities) {
+		this.entities = entities;
+	}
+
+	public void setEntityClass(String entityClass) {
+		this.entityClass = entityClass;
+	}
+
+	public void setAPs(List<AttachmentPoint> attachmentPoints) {
+		this.attachmentPoints = attachmentPoints;
+	}
+
+	/**
      * Get a list of duplicate attachment points, given a list of old attachment
      * points and one attachment point per L2 domain. Given a true attachment
      * point in the L2 domain, say trueAP, another attachment point in the
@@ -581,6 +719,17 @@ public class Device implements IDevice {
         return sp.toArray(new SwitchPort[sp.size()]);
     }
 
+    @Column
+    public List<AttachmentPoint> getAps(){
+    	return this.attachmentPoints; 
+    }
+    
+    
+    public void setAps(List<AttachmentPoint> aps){
+    	this.attachmentPoints = aps; 
+    }
+    
+    
     @Override
     public SwitchPort[] getAttachmentPoints() {
         return getAttachmentPoints(false);
@@ -630,18 +779,26 @@ public class Device implements IDevice {
         return sp.toArray(new SwitchPort[sp.size()]);
     }
 
-    @Override
+    @Override 
+    @Column (serializer = SerialNum.LONG)
     public Long getDeviceKey() {
         return deviceKey;
     }
 
+    public void setDeviceKey(Long d) {
+        this.deviceKey = d; 
+    }
+
     @Override
+    
     public long getMACAddress() {
         // we assume only one MAC per device for now.
         return entities[0].getMacAddress();
     }
 
+    
     @Override
+    
     public String getMACAddressString() {
         return macAddressString;
     }
@@ -652,6 +809,8 @@ public class Device implements IDevice {
     }
 
     static final EnumSet<DeviceField> ipv4Fields = EnumSet.of(DeviceField.IPV4);
+
+	public static final long MAX_CACHE_SOURCE_DEVICE = 2000;
 
     @Override
     public Integer[] getIPv4Addresses() {
@@ -665,6 +824,7 @@ public class Device implements IDevice {
             // We have an IP address only if among the devices within the class
             // we have the most recent entity with that IP.
             boolean validIP = true;
+            IEntityClass entityClass = Device.classes.get(this.entityClass); 
             Iterator<Device> devices =
                     deviceManager.queryClassByEntity(entityClass, ipv4Fields, e);
             while (devices.hasNext()) {
@@ -692,6 +852,21 @@ public class Device implements IDevice {
         return vals.toArray(new Integer[vals.size()]);
     }
 
+    
+    public Integer[] getIPv4AddressesToString() {
+        // XXX - TODO we can cache this result.  Let's find out if this
+        // is really a performance bottleneck first though.
+
+        TreeSet<Integer> vals = new TreeSet<Integer>();
+        if (entities != null){
+        for (Entity e : entities) {
+            if (e.getIpv4Address() == null) continue;
+
+            vals.add(e.getIpv4Address());
+        }
+        }
+        return vals.toArray(new Integer[vals.size()]);
+    }
     @Override
     public Short[] getSwitchPortVlanIds(SwitchPort swp) {
         TreeSet<Short> vals = new TreeSet<Short>();
@@ -724,17 +899,17 @@ public class Device implements IDevice {
 
     @Override
     public IEntityClass getEntityClass() {
-        return entityClass;
+        return Device.classes.get(entityClass); 
     }
 
+    @Column
     public Entity[] getEntities() {
         return entities;
     }
 
-    public String getDHCPClientName() {
-        return dhcpClientName;
-    }
-
+   public Device(){
+	   
+   }
     // ***************
     // Utility Methods
     // ***************
@@ -777,12 +952,12 @@ public class Device implements IDevice {
         builder.append("Device [deviceKey=");
         builder.append(deviceKey);
         builder.append(", entityClass=");
-        builder.append(entityClass.getName());
+        builder.append(entityClass);
         builder.append(", MAC=");
         builder.append(macAddressString);
         builder.append(", IPs=[");
         boolean isFirst = true;
-        for (Integer ip: getIPv4Addresses()) {
+        for (Integer ip: getIPv4AddressesToString()) {
             if (!isFirst)
                 builder.append(", ");
             isFirst = false;
@@ -791,6 +966,10 @@ public class Device implements IDevice {
         builder.append("], APs=");
         builder.append(Arrays.toString(getAttachmentPoints(true)));
         builder.append("]");
+        
+        builder.append(" Entities = [" + Arrays.toString(entities) + "]"); 
         return builder.toString();
     }
+
+	
 }

@@ -17,6 +17,7 @@
 
 package net.floodlightcontroller.devicemanager.internal;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
@@ -41,12 +42,12 @@ import net.floodlightcontroller.devicemanager.IEntityClassifierService;
  */
 public class DefaultEntityClassifier implements
         IEntityClassifierService,
-        IFloodlightModule 
+        IFloodlightModule, Serializable 
 {
     /**
      * A default fixed entity class
      */
-    protected static class DefaultEntityClass implements IEntityClass {
+    protected static class DefaultEntityClass implements IEntityClass, Serializable {
         String name;
 
         public DefaultEntityClass(String name) {
